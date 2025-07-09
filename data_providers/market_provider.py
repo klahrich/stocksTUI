@@ -214,10 +214,20 @@ def get_historical_data(ticker: str, period: str, interval: str = "1d"):
         interval: The data interval (e.g., "1d", "1wk").
 
     Returns:
-        A pandas DataFrame with the historical data, or an empty DataFrame on error.
+        A pandas DataFrame with the historical data. If the ticker is invalid,
+        it returns an empty DataFrame with an 'error' attribute set.
     """
     try:
-        data = yf.Ticker(ticker).history(period=period, interval=interval)
+        ticker_obj = yf.Ticker(ticker)
+        # Pre-validate ticker to provide better error feedback.
+        if not ticker_obj.info or ticker_obj.info.get('currency') is None:
+            logging.warning(f"Historical data check: Ticker '{ticker}' appears invalid.")
+            df = pd.DataFrame()
+            df.attrs['error'] = 'Invalid Ticker'
+            df.attrs['symbol'] = ticker.upper()
+            return df
+
+        data = ticker_obj.history(period=period, interval=interval)
         if not data.empty:
             data.attrs['symbol'] = ticker.upper()
         return data
@@ -225,68 +235,74 @@ def get_historical_data(ticker: str, period: str, interval: str = "1d"):
         logging.error(f"Failed to fetch historical data for {ticker} over {period} with interval {interval}: {e}")
         return pd.DataFrame()
 
-def get_news_data(ticker: str) -> list[dict]:
+def get_news_data(ticker: str) -> list[dict] | None:
     """
     Fetches and processes news articles for a single ticker symbol, with caching.
+
+    Exceptions are intended to be caught by the calling worker.
 
     Args:
         ticker: The stock ticker symbol.
 
     Returns:
-        A list of dictionaries, each representing a news article.
+        A list of dictionaries, each representing a news article. Returns None
+        if the ticker symbol is invalid. Returns an empty list if there's no news.
     """
     if not ticker: return []
     normalized_ticker = ticker.upper()
 
     # Check cache first
+    now = datetime.now()
     if normalized_ticker in _news_cache:
         timestamp, cached_data = _news_cache[normalized_ticker]
-        if datetime.now() - timestamp < timedelta(seconds=CACHE_DURATION_SECONDS):
+        if now - timestamp < timedelta(seconds=CACHE_DURATION_SECONDS):
             return cached_data
 
-    try:
-        raw_news = yf.Ticker(normalized_ticker).news
-        if not raw_news:
-            return []
+    ticker_obj = yf.Ticker(normalized_ticker)
+    # Pre-validate ticker. If invalid, return None to signal failure.
+    # Let yfinance exceptions bubble up to the worker.
+    if not ticker_obj.info or ticker_obj.info.get('currency') is None:
+        logging.warning(f"News data check: Ticker '{normalized_ticker}' appears invalid.")
+        return None
 
-        # Process the raw news data into a cleaner format
-        processed_news = []
-        for item in raw_news:
-            content = item.get('content', {})
-            if not content:
-                continue
-
-            title = content.get('title', 'N/A')
-            summary = content.get('summary', 'N/A')
-            publisher = content.get('provider', {}).get('displayName', 'N/A')
-            link = content.get('canonicalUrl', {}).get('url', '#')
-            
-            # Format the publication timestamp
-            publish_time_str = "N/A"
-            pub_date_str = content.get('pubDate')
-            if pub_date_str:
-                try:
-                    utc_dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
-                    local_dt = utc_dt.astimezone()
-                    publish_time_str = local_dt.strftime('%Y-%m-%d %H:%M %Z')
-                except (ValueError, TypeError):
-                    publish_time_str = pub_date_str
-
-            processed_news.append({
-                'title': title,
-                'summary': summary,
-                'publisher': publisher,
-                'link': link,
-                'publish_time': publish_time_str,
-            })
-        
-        # Update the cache
-        _news_cache[normalized_ticker] = (datetime.now(), processed_news)
-        return processed_news
-
-    except Exception as e:
-        logging.error(f"yfinance error fetching news for {ticker}: {e}")
+    raw_news = ticker_obj.news
+    if not raw_news:
         return []
+
+    # Process the raw news data into a cleaner format
+    processed_news = []
+    for item in raw_news:
+        content = item.get('content', {})
+        if not content:
+            continue
+
+        title = content.get('title', 'N/A')
+        summary = content.get('summary', 'N/A')
+        publisher = content.get('provider', {}).get('displayName', 'N/A')
+        link = content.get('canonicalUrl', {}).get('url', '#')
+        
+        # Format the publication timestamp
+        publish_time_str = "N/A"
+        pub_date_str = content.get('pubDate')
+        if pub_date_str:
+            try:
+                utc_dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                local_dt = utc_dt.astimezone()
+                publish_time_str = local_dt.strftime('%Y-%m-%d %H:%M %Z')
+            except (ValueError, TypeError):
+                publish_time_str = pub_date_str
+
+        processed_news.append({
+            'title': title,
+            'summary': summary,
+            'publisher': publisher,
+            'link': link,
+            'publish_time': publish_time_str,
+        })
+    
+    # Update the cache
+    _news_cache[normalized_ticker] = (datetime.now(), processed_news)
+    return processed_news
 
 def get_ticker_info_comparison(ticker: str) -> dict:
     """Gets both 'fast_info' and full 'info' for a ticker for debug/comparison."""

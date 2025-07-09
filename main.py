@@ -555,6 +555,8 @@ class StocksTUI(App):
             self.post_message(NewsDataUpdated(ticker, data))
         except Exception as e:
             logging.error(f"Worker fetch_news failed for {ticker}: {e}")
+            # On ANY exception, send None to signal a failure to the UI.
+            self.post_message(NewsDataUpdated(ticker, None))
             
     @work(exclusive=True, thread=True)
     def fetch_historical_data(self, ticker: str, period: str, interval: str = "1d"):
@@ -607,7 +609,15 @@ class StocksTUI(App):
 
         for row_data in rows:
             desc, price, change, change_percent, day_range, week_range, symbol = row_data
-            desc_text = Text(desc, style=muted_color if desc == 'N/A' else "")
+            
+            # Style description based on content
+            if desc == 'Invalid Ticker':
+                desc_text = Text(desc, style=error_color)
+            elif desc == 'N/A':
+                desc_text = Text(desc, style=muted_color)
+            else:
+                desc_text = Text(desc)
+            
             price_text = Text(f"${price:,.2f}", style=price_color, justify="right") if price is not None else Text("N/A", style=muted_color, justify="right")
             
             # Color the change and % change based on whether it's positive or negative.
@@ -726,7 +736,17 @@ class StocksTUI(App):
     async def on_news_data_updated(self, message: NewsDataUpdated):
         """Handles arrival of news data, then tells the news view to render it."""
         self._news_content_for_ticker = message.ticker
-        self._last_news_content = formatter.format_news_for_display(message.data)
+        
+        # `None` is the universal signal for any failure (invalid ticker, network error, etc.)
+        if message.data is None:
+            # Create a string using standard Markdown syntax.
+            error_markdown = (
+                f"**Error:** Could not retrieve news for '{message.ticker}'.\n\n"
+                "This may be due to an invalid symbol or a network connectivity issue."
+            )
+            self._last_news_content = (error_markdown, [])
+        else: # Ticker was valid and data was fetched, format the news data
+            self._last_news_content = formatter.format_news_for_display(message.data)
         
         if self.get_active_category() == 'news' and self.news_ticker == message.ticker:
             try:
@@ -828,7 +848,7 @@ class StocksTUI(App):
                 if column_index >= len(row_values): return (1, 0)
                 cell_value = row_values[column_index]
                 text_content = extract_cell_text(cell_value)
-                if text_content == "N/A": return (1, 0)
+                if text_content in ("N/A", "Invalid Ticker"): return (1, 0)
                 if self._sort_column_key in ("Description", "Ticker"):
                     return (0, text_content.lower())
                 cleaned_text = text_content.replace("$", "").replace(",", "").replace("%", "").replace("+", "")

@@ -3,6 +3,7 @@ from textual.widgets import (Input, RadioButton, Switch,
                              Static, DataTable)
 from textual.app import ComposeResult, on
 from textual.dom import NoMatches
+from rich.text import Text
 
 from ui.suggesters import TickerSuggester
 from ui.widgets.history_chart import HistoryChart
@@ -59,7 +60,14 @@ class HistoryView(Vertical):
                 return
             
             if last_data.empty:
-                await display_container.mount(Static("Could not retrieve historical data for the selected ticker/range."))
+                # Check for a specific error message from the data provider
+                error_msg = last_data.attrs.get('error')
+                if error_msg == 'Invalid Ticker':
+                    ticker = last_data.attrs.get('symbol', 'the selected ticker')
+                    error_text = Text.assemble(("Error: ", "bold red"), f"Invalid ticker symbol '{ticker}'.")
+                    await display_container.mount(Static(error_text))
+                else: # Generic error for other cases (e.g., no data in range)
+                    await display_container.mount(Static("Could not retrieve historical data for the selected ticker/range."))
                 return
 
             view_toggle = self.query_one("#history-view-toggle", Switch)
