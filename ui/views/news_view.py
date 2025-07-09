@@ -177,10 +177,23 @@ class NewsView(Vertical):
 
     def action_open_link(self) -> None:
         """Opens the currently focused (highlighted) link in the default web browser."""
-        if self._current_link_index != -1 and self._link_urls:
-            try:
-                url_to_open = self._link_urls[self._current_link_index]
-                webbrowser.open(url_to_open)
-                self.app.notify(f"Opening {url_to_open}")
-            except (IndexError, Exception) as e:
-                self.app.notify(f"Could not open link: {e}", severity="error")
+        if self._current_link_index == -1 or not self._link_urls:
+            return
+
+        try:
+            url_to_open = self._link_urls[self._current_link_index]
+            self.app.notify(f"Opening {url_to_open}...")
+            webbrowser.open(url_to_open)
+        except webbrowser.Error:
+            # This is the most common and actionable error.
+            self.app.notify(
+                "No web browser found. Please configure your system's default browser.",
+                severity="error",
+                timeout=8
+            )
+        except IndexError:
+            # This indicates a potential logic error in the app.
+            self.app.notify("Internal error: Invalid link index.", severity="error")
+        except Exception as e:
+            # Catch any other unexpected errors.
+            self.app.notify(f"An unexpected error occurred: {e}", severity="error")
