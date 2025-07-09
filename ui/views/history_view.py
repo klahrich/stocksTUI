@@ -61,13 +61,20 @@ class HistoryView(Vertical):
             
             if last_data.empty:
                 # Check for a specific error message from the data provider
-                error_msg = last_data.attrs.get('error')
-                if error_msg == 'Invalid Ticker':
-                    ticker = last_data.attrs.get('symbol', 'the selected ticker')
+                error_type = last_data.attrs.get('error')
+                ticker = last_data.attrs.get('symbol', 'the selected ticker')
+                
+                error_text = Text()
+                if error_type == 'Invalid Ticker':
                     error_text = Text.assemble(("Error: ", "bold red"), f"Invalid ticker symbol '{ticker}'.")
-                    await display_container.mount(Static(error_text))
+                elif error_type == 'Network Error':
+                    error_text = Text.assemble(("Network Error: ", "bold red"), f"Could not retrieve data for '{ticker}'.")
+                elif error_type == 'Data Error':
+                     error_text = Text.assemble(("Data Error: ", "bold red"), f"Could not process data for '{ticker}'.")
                 else: # Generic error for other cases (e.g., no data in range)
-                    await display_container.mount(Static("Could not retrieve historical data for the selected ticker/range."))
+                    error_text = Text(f"No historical data found for '{ticker}' in the selected range.")
+
+                await display_container.mount(Static(error_text))
                 return
 
             view_toggle = self.query_one("#history-view-toggle", Switch)

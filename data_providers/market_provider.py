@@ -3,6 +3,7 @@ import logging
 from datetime import datetime, timedelta
 import time
 import pandas as pd
+from requests.exceptions import RequestException
 
 # In-memory cache for storing fetched market data to reduce API calls.
 # Keys are ticker symbols (uppercase), values are tuples of (timestamp, data).
@@ -113,34 +114,49 @@ def get_market_price_data_uncached(tickers: list[str]) -> list[dict]:
         # Use yf.Tickers for efficient batch fetching
         ticker_objects = yf.Tickers(" ".join(tickers))
         for ticker_symbol in ticker_objects.tickers:
-            info = ticker_objects.tickers[ticker_symbol].info
-            
-            # Handle cases where the ticker is invalid or data is missing
-            if not info or info.get('currency') is None:
-                logging.warning(f"Could not retrieve info for ticker: {ticker_symbol}")
+            try:
+                info = ticker_objects.tickers[ticker_symbol].info
+                
+                # Handle cases where the ticker is invalid or data is missing
+                if not info or info.get('currency') is None:
+                    logging.warning(f"Could not retrieve info for ticker: {ticker_symbol}")
+                    data.append({
+                        "symbol": ticker_symbol, "description": "Invalid Ticker",
+                        "price": None, "previous_close": None, "day_low": None,
+                        "day_high": None, "fifty_two_week_low": None,
+                        "fifty_two_week_high": None,
+                    })
+                    continue
+
+                # Extract relevant price information
+                last_price = info.get('currentPrice', info.get('regularMarketPrice'))
+                
                 data.append({
-                    "symbol": ticker_symbol, "description": "Invalid Ticker",
+                    "symbol": ticker_symbol,
+                    "description": info.get('longName', ticker_symbol),
+                    "price": last_price,
+                    "previous_close": info.get('previousClose'),
+                    "day_low": info.get('dayLow'),
+                    "day_high": info.get('dayHigh'),
+                    "fifty_two_week_low": info.get('fiftyTwoWeekLow'),
+                    "fifty_two_week_high": info.get('fiftyTwoWeekHigh'),
+                })
+            # Catch errors for a single ticker, allowing the batch to continue.
+            except (RequestException, ValueError, KeyError) as e:
+                logging.warning(f"Data retrieval failed for ticker {ticker_symbol}: {type(e).__name__}")
+                data.append({
+                    "symbol": ticker_symbol, "description": "Data Unavailable",
                     "price": None, "previous_close": None, "day_low": None,
                     "day_high": None, "fifty_two_week_low": None,
                     "fifty_two_week_high": None,
                 })
-                continue
 
-            # Extract relevant price information
-            last_price = info.get('currentPrice', info.get('regularMarketPrice'))
-            
-            data.append({
-                "symbol": ticker_symbol,
-                "description": info.get('longName', ticker_symbol),
-                "price": last_price,
-                "previous_close": info.get('previousClose'),
-                "day_low": info.get('dayLow'),
-                "day_high": info.get('dayHigh'),
-                "fifty_two_week_low": info.get('fiftyTwoWeekLow'),
-                "fifty_two_week_high": info.get('fiftyTwoWeekHigh'),
-            })
-    except Exception as e:
-        logging.error(f"yfinance error fetching market prices with .info: {e}")
+    # Catch network errors affecting the entire batch request.
+    except RequestException as e:
+        logging.error(f"Network error fetching market prices batch: {type(e).__name__}")
+    # Catch any truly unexpected errors and log with a full stack trace.
+    except Exception:
+        logging.exception("An unexpected error occurred in get_market_price_data_uncached.")
     return data
 
 def get_market_status(calendar_name='NYSE') -> dict:
@@ -200,8 +216,13 @@ def get_market_status(calendar_name='NYSE') -> dict:
             'holiday': None,
             'calendar': calendar_name
         }
-    except Exception as e:
-        logging.error(f"Market status error for {calendar_name}: {e}")
+    # Catch specific, expected errors from the calendar library.
+    except (ValueError, AttributeError) as e:
+        logging.warning(f"Calendar data issue for {calendar_name}: {type(e).__name__} - {e}")
+        return {'status': 'closed', 'is_open': False, 'holiday': 'Data Error', 'calendar': calendar_name}
+    # Catch any other unexpected errors and log with a full stack trace.
+    except Exception:
+        logging.exception(f"Unexpected error getting market status for {calendar_name}")
         return {'status': 'closed', 'is_open': False, 'holiday': 'Error', 'calendar': calendar_name}
 
 def get_historical_data(ticker: str, period: str, interval: str = "1d"):
@@ -214,26 +235,33 @@ def get_historical_data(ticker: str, period: str, interval: str = "1d"):
         interval: The data interval (e.g., "1d", "1wk").
 
     Returns:
-        A pandas DataFrame with the historical data. If the ticker is invalid,
+        A pandas DataFrame with the historical data. If an error occurs,
         it returns an empty DataFrame with an 'error' attribute set.
     """
+    df = pd.DataFrame()
+    df.attrs['symbol'] = ticker.upper() # Add symbol to attrs for all return paths
     try:
         ticker_obj = yf.Ticker(ticker)
         # Pre-validate ticker to provide better error feedback.
         if not ticker_obj.info or ticker_obj.info.get('currency') is None:
             logging.warning(f"Historical data check: Ticker '{ticker}' appears invalid.")
-            df = pd.DataFrame()
             df.attrs['error'] = 'Invalid Ticker'
-            df.attrs['symbol'] = ticker.upper()
             return df
 
         data = ticker_obj.history(period=period, interval=interval)
         if not data.empty:
             data.attrs['symbol'] = ticker.upper()
         return data
-    except Exception as e:
-        logging.error(f"Failed to fetch historical data for {ticker} over {period} with interval {interval}: {e}")
-        return pd.DataFrame()
+    # Catch network-related errors specifically.
+    except RequestException as e:
+        logging.warning(f"Network error fetching historical data for {ticker}: {type(e).__name__}")
+        df.attrs['error'] = 'Network Error'
+        return df
+    # Catch unexpected errors and log with a full stack trace.
+    except Exception:
+        logging.exception(f"Unexpected error fetching historical data for {ticker}")
+        df.attrs['error'] = 'Data Error'
+        return df
 
 def get_news_data(ticker: str) -> list[dict] | None:
     """
@@ -316,8 +344,11 @@ def get_ticker_info_comparison(ticker: str) -> dict:
             return {"fast": {}, "slow": {}}
             
         return {"fast": fast_info, "slow": slow_info}
-    except Exception as e:
-        logging.error(f"Error fetching info for {ticker}: {e}")
+    except RequestException as e:
+        logging.warning(f"Network error getting info for {ticker}: {type(e).__name__}")
+        return {"fast": {}, "slow": {}}
+    except Exception:
+        logging.exception(f"Unexpected error getting info comparison for {ticker}")
         return {"fast": {}, "slow": {}}
 
 
@@ -337,7 +368,11 @@ def run_ticker_debug_test(tickers: list[str]) -> list[dict]:
         try:
             info = yf.Ticker(symbol).info
             is_valid = info and info.get('currency') is not None
+        except RequestException as e:
+            logging.warning(f"Network error testing {symbol}: {type(e).__name__}")
+            info, is_valid = {}, False
         except Exception:
+            logging.exception(f"Unexpected error testing {symbol}")
             info, is_valid = {}, False
         latency = time.perf_counter() - start_time
         description = info.get('longName', 'N/A') if is_valid else "Could not retrieve data. Delisted or invalid."
@@ -362,12 +397,13 @@ def run_list_debug_test(lists: dict[str, list[str]]):
             continue
         start_time = time.perf_counter()
         try:
-            # --- FIX: Use yf.Tickers to more accurately test list health ---
             ticker_objects = yf.Tickers(" ".join(tickers))
             for ticker in ticker_objects.tickers:
                 _ = ticker_objects.tickers[ticker].info # Access .info to trigger fetch
-        except Exception as e:
-            logging.error(f"Error during list debug test for '{list_name}': {e}")
+        except RequestException as e:
+            logging.warning(f"Network error testing list '{list_name}': {type(e).__name__}")
+        except Exception:
+            logging.exception(f"Unexpected error testing list '{list_name}'")
         latency = time.perf_counter() - start_time
         results.append({"list_name": list_name, "latency": latency, "ticker_count": len(tickers)})
     results.sort(key=lambda x: x['latency'], reverse=True)
