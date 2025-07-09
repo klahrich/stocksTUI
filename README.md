@@ -10,12 +10,12 @@ stocksTUI is designed for anyone who prefers to keep an eye on the stock market 
 
 ## Features
 
--   **Real-time* Price Data:** Monitor stock prices, daily change, and ranges. (* Fetched via API, may have delays)
--   **Customizable Watchlists:** Organize your symbols into different lists (e.g., tech stocks, crypto, indices).
--   **Historical Data:** View historical performance with charts and data tables.
--   **Ticker News:** Stay updated with the latest news for any symbol.
--   **Theming:** Customize the look and feel with multiple built-in themes.
--   **Configurable:** Adjust refresh rates, default tabs, and more.
+- 📈 **Real-Time(ish)** Price Data – Because latency is still better than CNBC ads.
+- 🧮 **Custom Watchlists** – Sort your tech bros from your energy overlords.
+- 📊 **Historical Charts** – Plots your portfolio’s regrets with style.
+- 📰 **Ticker News** – Stay smarter than the talking heads.
+- 🎨 **Theming** – Dark mode? Light mode? You've got taste, and now you’ve got options.
+- ⚙️ **Configurable Everything** – Refresh rate, default views, existential dread? All tweakable.
 
 ## Installation
 
@@ -34,7 +34,7 @@ stocksTUI is designed for anyone who prefers to keep an eye on the stock market 
     ```
 
 3.  **Run the application:**
-    You can now run the application from anywhere using the `stockstui` command. The symlink located ~/.local/bin, so make sure it's in your path.
+    You can now run the application from anywhere using the `stockstui` command. The symlink is located at `~/.local/bin`, so make sure it's in your `PATH`.
     ```bash
     stockstui
     ```
@@ -45,7 +45,7 @@ stocksTUI is designed for anyone who prefers to keep an eye on the stock market 
 
 ### Windows
 
-For Windows 10/11, for the poor souls who have not switched. I strongly recommend using the **Windows Subsystem for Linux (WSL 2)**. This will provide you with the knowledge to switch to Linux later, the best performance and a seamless experience.
+For Windows 10/11, those brave enough to remain. Strongly recommending **WSL 2**, not just for performance but because you deserve a better OS experience. It’s like Linux training wheels, but you’ll thank yourself later.
 
 1.  **Install WSL 2 (One-Time Setup):**
     If you don't have WSL installed, open **PowerShell as an Administrator** and run:
@@ -95,7 +95,7 @@ For macOS, I recommend a manual installation using Python's built-in tools.
     python3 -m venv venv
     source venv/bin/activate
     ```
-    *(You will need to run `source venv/bin/activate` in every new terminal session before running the app).*
+    *(You will need to run `source venv/bin/activate` in every new terminal session before running the app.)*
 
 4.  **Install dependencies:**
     ```bash
@@ -113,7 +113,7 @@ For macOS, I recommend a manual installation using Python's built-in tools.
 | --------------- | ----------------------------- | ------------ |
 | `q`             | Quit the application          | Global       |
 | `r`             | Refresh current view          | Global       |
-| `R` (`Shift+r`) | Refresh all lists in background | Global       |
+| `R` (`Shift+R`) | Refresh all lists in background | Global       |
 | `s`             | Enter Sort Mode               | Price/History |
 | `?`             | Toggle Help Screen            | Global       |
 | `/`             | Search in current table       | Tables       |
@@ -144,7 +144,8 @@ In Sort Mode (after pressing `s`):
 User-specific configuration files are stored in `~/.config/stockstui/`. You can edit `lists.json` to manage your watchlists or `settings.json` for application settings. The application must be restarted for changes to `lists.json` to take effect.
 
 ## Dependencies
-Dependencies will automatically be installed with the install script.
+
+Dependencies are automatically installed by the installation script.
 -   [textual](https://github.com/textualize/textual)
 -   [yfinance](https://github.com/ranaroussi/yfinance)
 -   [pandas-market-calendars](https://github.com/rsheftel/pandas_market_calendars)
