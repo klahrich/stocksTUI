@@ -1,0 +1,40 @@
+StocksTUI Help
+
+Keybindings:
+
+  q or Z: Quit
+  r:      Refresh
+  R:      Refresh All
+  /:      Search
+  ?:      Toggle Help
+  i:      Focus on table or input field
+
+  s: Enter Sort Mode
+    Tables:
+    d: Sort by Description/Date
+    p: Sort by Price
+    c: Sort by Change/Close
+    e: Sort by % Change
+    t: Sort by Ticker
+    u: Undo Sort
+    History:
+    o: Sort by Open
+    H: Sort by High
+    L: Sort by Low
+    v: Sort by Volume
+
+  CTRL+c: Copy Text
+  ESC: Dismiss or Focus Tabs
+
+  k, up:    Move Cursor Up
+  j, down:  Move Cursor Down
+  h, left:  Move Cursor Left
+  l, right: Move Cursor Right
+  1-0:      Select Tabs 1-10
+
+  News:
+  TAB:        Next Link
+  SHIFT+TAB:  Previous Link
+  ENTER:      Open Link
+
+Mouse scroll, touch pads, etc., only work in y-axis. Hold CTRL or SHIFT while scrolling for x-axis.

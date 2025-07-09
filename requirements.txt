@@ -1,0 +1,5 @@
+textual
+yfinance
+pandas-market-calendars
+plotext
+textual_plotext

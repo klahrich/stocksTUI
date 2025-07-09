@@ -1,0 +1,6 @@
+{
+    "theme": "gruvbox_soft_dark",
+    "default_tab_category": "stocks",
+    "auto_refresh": false,
+    "refresh_interval": 300.0
+}
