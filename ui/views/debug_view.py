@@ -28,6 +28,10 @@ class DebugView(Vertical):
         """
         button_id = event.button.id
         
+        # --- FIX: Disable all buttons immediately to prevent race conditions and ensure UI consistency. ---
+        for button in self.query(".debug-buttons Button"):
+            button.disabled = True
+            
         container = self.query_one("#debug-output-container")
         await container.remove_children() # Clear previous test results
         
@@ -35,21 +39,20 @@ class DebugView(Vertical):
             # Special handling for Compare Ticker Info, which requires a modal input
             async def on_modal_close(ticker: str | None):
                 if ticker:
-                    # Mount the table *after* the modal closes with a valid ticker
+                    # User submitted a ticker. The test will run.
                     await container.mount(DataTable(id="debug-table"))
                     dt = self.query_one("#debug-table", DataTable)
                     
-                    # Disable buttons while test is running
-                    for button in self.query(".debug-buttons Button"):
-                        button.disabled = True
-                    
                     dt.clear()
                     dt.add_columns("Info Key", "Fast", "Slow")
-                    dt.loading = True # Show loading indicator
+                    dt.loading = True
                     
                     self.app.run_info_comparison_test(ticker)
-                else: # Modal was cancelled, restore initial state
+                else: 
+                    # --- FIX: User cancelled the modal, so re-enable buttons and restore initial state. ---
                     await container.mount(Static("[dim]Run a test to see results.[/dim]", id="info-message"))
+                    for button in self.query(".debug-buttons Button"):
+                        button.disabled = False
             
             self.app.push_screen(CompareInfoModal(), on_modal_close)
             
@@ -57,10 +60,6 @@ class DebugView(Vertical):
             # For other tests, directly mount the DataTable and start the test
             await container.mount(DataTable(id="debug-table"))
             dt = self.query_one("#debug-table", DataTable)
-            
-            # Disable buttons while test is running
-            for button in self.query(".debug-buttons Button"):
-                button.disabled = True
             
             dt.loading = True # Show loading indicator
             
