@@ -19,6 +19,8 @@ stocksTUI is designed for anyone who prefers to keep an eye on the stock market 
 
 ## Installation
 
+### Linux
+
 1.  **Clone the repository:**
     ```bash
     git clone https://github.com/andriy-git/stocksTUI.git
@@ -39,6 +41,70 @@ stocksTUI is designed for anyone who prefers to keep an eye on the stock market 
     To see the help text, use the `-h` flag:
     ```bash
     stockstui -h
+    ```
+
+### Windows
+
+For Windows 10/11, for the poor souls who have not switched. I strongly recommend using the **Windows Subsystem for Linux (WSL 2)**. This will provide you with the knowledge to switch to Linux later, the best performance and a seamless experience.
+
+1.  **Install WSL 2 (One-Time Setup):**
+    If you don't have WSL installed, open **PowerShell as an Administrator** and run:
+    ```powershell
+    wsl --install
+    ```
+    This will install the necessary Windows features and the default Ubuntu Linux distribution. You may need to restart your computer. For more details, see the [official Microsoft documentation](https://docs.microsoft.com/en-us/windows/wsl/install).
+
+2.  **Open Your Linux Terminal:**
+    Once installed, open "Ubuntu" (or your chosen distro) from the Windows Start Menu. All the following commands should be run inside this Linux terminal.
+
+3.  **Follow the Linux Installation Steps:**
+    Now that you are inside your Linux environment, follow the exact same steps as the Linux installation above:
+    ```bash
+    # Clone the repository inside a directory of your choice
+    git clone https://github.com/andriy-git/stocksTUI.git
+    cd stocksTUI
+
+    # Run the installation script
+    ./install.sh
+    ```
+
+4.  **Run the application:**
+    From your Linux terminal, you can now run the app:
+    ```bash
+    stockstui
+    ```
+
+### macOS
+
+For macOS, I recommend a manual installation using Python's built-in tools.
+
+1.  **Prerequisite: Install Python 3.**
+    If you don't have a modern version of Python installed, I recommend installing it via [Homebrew](https://brew.sh/):
+    ```bash
+    brew install python3
+    ```
+
+2.  **Clone the repository:**
+    ```bash
+    git clone https://github.com/andriy-git/stocksTUI.git
+    cd stocksTUI
+    ```
+
+3.  **Create and activate a virtual environment:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate
+    ```
+    *(You will need to run `source venv/bin/activate` in every new terminal session before running the app).*
+
+4.  **Install dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+5.  **Run the application:**
+    ```bash
+    python3 main.py
     ```
 
 ## Keybindings
