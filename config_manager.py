@@ -41,13 +41,15 @@ class ConfigManager:
 
         If the user-specific file does not exist, is empty, or is corrupted
         (i.e., not valid JSON), this method will:
-        1. Load the corresponding default configuration file from the app's internal
+        1. **Backup the corrupted file** to `[filename].bak` if it exists.
+        2. Load the corresponding default configuration file from the app's internal
            'default_configs' directory.
-        2. Write this default configuration to the user's config path, effectively
+        3. Write this default configuration to the user's config path, effectively
            creating or restoring it.
-        3. Return the loaded default data.
+        4. Return the loaded default data.
 
-        This ensures the application always has a valid configuration to work with.
+        This ensures the application always has a valid configuration to work with,
+        while preserving corrupted user data for manual recovery.
 
         Args:
             filename: The name of the configuration file to load (e.g., 'settings.json').
@@ -79,33 +81,37 @@ class ConfigManager:
         if user_path.exists():
             try:
                 with open(user_path, 'r') as f:
+                    # An empty file is considered invalid for primary configs.
+                    if os.fstat(f.fileno()).st_size == 0:
+                        raise json.JSONDecodeError("File is empty.", "", 0)
                     data = json.load(f)
-            except (json.JSONDecodeError, IOError):
-                logging.warning(f"User config '{user_path}' is corrupted. It will be restored from default.")
+            except (json.JSONDecodeError, IOError) as e:
+                logging.warning(f"User config '{user_path}' is corrupted or unreadable: {e}. It will be backed up and restored from default.")
+                # --- Backup corrupted file before overwriting ---
+                try:
+                    backup_path = user_path.with_suffix(user_path.suffix + '.bak')
+                    os.rename(user_path, backup_path)
+                    logging.info(f"Corrupted file '{user_path.name}' has been backed up to '{backup_path.name}'.")
+                except OSError as backup_err:
+                    logging.error(f"Could not back up corrupted file '{user_path}': {backup_err}")
                 data = None  # Mark as needing restoration from default.
 
         # --- Step 2: If user config failed to load, create/restore it from default. ---
         if data is None:
-            # First, check if the default file even exists. This is a critical error.
             if not default_path.exists():
                 logging.critical(f"Default config '{default_path}' is missing! Cannot create user config.")
-                return {}  # Critical failure, return empty config to prevent crash.
+                return {}
 
             try:
-                # Read the default config.
                 with open(default_path, 'r') as f_default:
                     default_data = json.load(f_default)
                 
-                # Write the default data to the user's config path. This creates a new
-                # file or overwrites a corrupted one, ensuring a working baseline.
-                with open(user_path, 'w') as f_user:
-                    json.dump(default_data, f_user, indent=4)
+                # Atomically save the default data to the user's config path.
+                self._atomic_save(filename, default_data)
                 logging.info(f"Created/Restored user config '{user_path}' from default.")
                 return default_data
             except (IOError, json.JSONDecodeError) as e:
                 logging.error(f"Failed to create user config from '{default_path}': {e}")
-                # As a last resort, try to load the default data directly into memory
-                # without writing it to the user's directory.
                 try:
                     with open(default_path, 'r') as f_default:
                         return json.load(f_default)
@@ -114,6 +120,32 @@ class ConfigManager:
                     return {}
 
         return data
+
+    def _atomic_save(self, filename: str, data: dict):
+        """
+        Safely saves a dictionary to a JSON file using an atomic operation.
+
+        This writes to a temporary file first, then renames it to the final
+        destination. This prevents file corruption if the write operation is
+        interrupted.
+
+        Args:
+            filename: The name of the file to save (e.g., 'settings.json').
+            data: The dictionary to serialize and save.
+        """
+        user_path = self.user_dir / filename
+        temp_path = user_path.with_suffix(user_path.suffix + '.tmp')
+        try:
+            with open(temp_path, 'w') as f:
+                json.dump(data, f, indent=4)
+            # The rename operation is atomic on most modern filesystems.
+            os.rename(temp_path, user_path)
+        except IOError as e:
+            logging.error(f"Could not save to '{filename}': {e}")
+        finally:
+            # Ensure the temporary file is removed in case of an error.
+            if temp_path.exists():
+                os.remove(temp_path)
 
     def get_setting(self, key: str, default=None):
         """
@@ -130,27 +162,15 @@ class ConfigManager:
 
     def save_settings(self):
         """Saves the current in-memory settings to the user's settings.json file."""
-        try:
-            with open(self.user_dir / 'settings.json', 'w') as f:
-                json.dump(self.settings, f, indent=4)
-        except IOError as e:
-            logging.error(f"Could not save settings: {e}")
+        self._atomic_save('settings.json', self.settings)
 
     def save_lists(self):
         """Saves the current in-memory symbol lists to the user's lists.json file."""
-        try:
-            with open(self.user_dir / 'lists.json', 'w') as f:
-                json.dump(self.lists, f, indent=4)
-        except IOError as e:
-            logging.error(f"Could not save lists: {e}")
+        self._atomic_save('lists.json', self.lists)
 
     def save_descriptions(self):
         """Saves the current in-memory descriptions cache to the user's descriptions.json file."""
-        try:
-            with open(self.user_dir / 'descriptions.json', 'w') as f:
-                json.dump(self.descriptions, f, indent=4)
-        except IOError as e:
-            logging.error(f"Could not save descriptions: {e}")
+        self._atomic_save('descriptions.json', self.descriptions)
 
     def get_description(self, ticker: str) -> str | None:
         """
