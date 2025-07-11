@@ -8,7 +8,7 @@ from textual.containers import Vertical, Horizontal
 from textual.widgets import Input, Markdown
 from textual.app import ComposeResult, on
 
-from ui.suggesters import TickerSuggester
+from stockstui.ui.suggesters import TickerSuggester
 
 class NewsView(Vertical):
     """A view for displaying news articles for a selected ticker, with link navigation."""

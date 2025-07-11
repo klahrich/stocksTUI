@@ -3,7 +3,7 @@
 set -e # Exit immediately if a command exits with a non-zero status.
 
 # Get the absolute path of the project directory (where install.sh is located)
-PROJECT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+PROJECT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 VENV_DIR="$PROJECT_DIR/venv"
 RUNNER_SCRIPT="$PROJECT_DIR/run.sh"
@@ -16,10 +16,10 @@ echo "Starting installation for StocksTUI..."
 
 # 1. Set up Python virtual environment
 if [ -d "$VENV_DIR" ]; then
-    echo "Virtual environment already exists. Skipping creation."
+  echo "Virtual environment already exists. Skipping creation."
 else
-    echo "Creating Python virtual environment at $VENV_DIR..."
-    python3 -m venv "$VENV_DIR"
+  echo "Creating Python virtual environment at $VENV_DIR..."
+  python3 -m venv "$VENV_DIR"
 fi
 
 # 2. Install dependencies
@@ -28,7 +28,7 @@ echo "Installing dependencies from $REQUIREMENTS_FILE..."
 
 # 3. Create the runner script (run.sh)
 echo "Creating runner script at $RUNNER_SCRIPT..."
-cat <<'EOF' > "$RUNNER_SCRIPT"
+cat <<'EOF' >"$RUNNER_SCRIPT"
 #!/bin/bash
 
 # Resolve the true directory of the script, following symlinks
@@ -42,8 +42,8 @@ SCRIPT_DIR="$( cd -P "$( dirname "$SOURCE" )" >/dev/null 2>&1 && pwd )"
 
 # Define paths relative to the script's location
 VENV_PATH="$SCRIPT_DIR/venv"
-MAIN_PY_PATH="$SCRIPT_DIR/main.py"
-HELP_TXT_PATH="$SCRIPT_DIR/documents/help.txt"
+MAIN_PY_PATH="$SCRIPT_DIR/stockstui/main.py"
+HELP_TXT_PATH="$SCRIPT_DIR/stockstui/documents/help.txt"
 
 # Help flag logic
 if [[ "$1" == "-h" || "$1" == "--help" ]]; then

@@ -2,7 +2,7 @@ from textual.containers import Vertical, Horizontal, Container
 from textual.widgets import Button, DataTable, Static
 from textual.app import ComposeResult, on
 
-from ui.modals import CompareInfoModal
+from stockstui.ui.modals import CompareInfoModal
 
 class DebugView(Vertical):
     """A view for running various debug tests related to data fetching and caching."""

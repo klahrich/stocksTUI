@@ -1,5 +1,11 @@
+# Local
 __pycache__
 venv
 run.sh
 *notes.md
 *.swp
+
+# Packaging and distribution artifacts
+/dist/
+/build/
+/*.egg-info/

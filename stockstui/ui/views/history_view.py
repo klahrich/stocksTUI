@@ -5,10 +5,10 @@ from textual.app import ComposeResult, on
 from textual.dom import NoMatches
 from rich.text import Text
 
-from ui.suggesters import TickerSuggester
-from ui.widgets.history_chart import HistoryChart
-from ui.widgets.vim_radio_set import VimRadioSet
-from presentation import formatter
+from stockstui.ui.suggesters import TickerSuggester
+from stockstui.ui.widgets.history_chart import HistoryChart
+from stockstui.ui.widgets.vim_radio_set import VimRadioSet
+from stockstui.presentation import formatter
 
 class HistoryView(Vertical):
     """A view for displaying historical stock data, allowing selection of tickers and time ranges."""

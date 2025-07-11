@@ -4,8 +4,9 @@ from textual.containers import Vertical, Horizontal
 from textual.app import ComposeResult
 from textual.app import on
 
-from common import NotEmpty
-from utils import slugify
+# FIX: Changed 'from common import ...' to an absolute import from the package root.
+from stockstui.common import NotEmpty
+from stockstui.utils import slugify
 
 class ConfirmDeleteModal(ModalScreen[bool]):
     """A modal dialog for confirming a deletion, optionally requiring text input for confirmation."""

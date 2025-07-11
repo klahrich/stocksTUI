@@ -6,10 +6,10 @@ from textual.dom import NoMatches
 from textual.validation import Number
 from rich.text import Text
 
-from ui.modals import (ConfirmDeleteModal, EditListModal, AddListModal,
-                       AddTickerModal, EditTickerModal)
-from utils import extract_cell_text, slugify
-from common import NotEmpty
+from stockstui.ui.modals import (ConfirmDeleteModal, EditListModal, AddListModal,
+                                 AddTickerModal, EditTickerModal)
+from stockstui.utils import extract_cell_text, slugify
+from stockstui.common import NotEmpty
 
 class ConfigView(Vertical):
     """A view for configuring application settings, symbol lists, and tab visibility."""

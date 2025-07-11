@@ -19,18 +19,18 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer,
 from textual import on, work
 from rich.text import Text
 
-from config_manager import ConfigManager
-from common import (PriceDataUpdated, NewsDataUpdated,
-                    TickerDebugDataUpdated, ListDebugDataUpdated, CacheTestDataUpdated,
-                    MarketStatusUpdated, HistoricalDataUpdated, TickerInfoComparisonUpdated)
-from ui.widgets.search_box import SearchBox
-from ui.views.config_view import ConfigView
-from ui.views.history_view import HistoryView
-from ui.views.news_view import NewsView
-from ui.views.debug_view import DebugView
-from data_providers import market_provider
-from presentation import formatter
-from utils import extract_cell_text
+from stockstui.config_manager import ConfigManager
+from stockstui.common import (PriceDataUpdated, NewsDataUpdated,
+                              TickerDebugDataUpdated, ListDebugDataUpdated, CacheTestDataUpdated,
+                              MarketStatusUpdated, HistoricalDataUpdated, TickerInfoComparisonUpdated)
+from stockstui.ui.widgets.search_box import SearchBox
+from stockstui.ui.views.config_view import ConfigView
+from stockstui.ui.views.history_view import HistoryView
+from stockstui.ui.views.news_view import NewsView
+from stockstui.ui.views.debug_view import DebugView
+from stockstui.data_providers import market_provider
+from stockstui.presentation import formatter
+from stockstui.utils import extract_cell_text
 
 # A base template for all themes. It defines the required keys and uses
 # placeholder variables (e.g., '$blue') that will be substituted with
@@ -88,6 +88,7 @@ class StocksTUI(App):
     This class orchestrates the entire application, including UI composition,
     state management, data fetching, and event handling.
     """
+    # The CSS file is now inside the package, so we need to tell Textual to load it from there
     CSS_PATH = "main.css"
     ENABLE_COMMAND_PALETTE = False
     
@@ -130,6 +131,7 @@ class StocksTUI(App):
     def __init__(self):
         """Initializes the application state and loads configurations."""
         super().__init__()
+        # ConfigManager now needs the path to the package root to find default_configs
         self.config = ConfigManager(Path(__file__).resolve().parent)
         self.refresh_timer = None
         
@@ -1109,6 +1111,10 @@ class StocksTUI(App):
             pass
     #endregion
 
-if __name__ == "__main__":
+def main():
+    """The main entry point for the application."""
     app = StocksTUI()
     app.run()
+
+if __name__ == "__main__":
+    main()
