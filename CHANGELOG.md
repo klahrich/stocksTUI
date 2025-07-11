@@ -2,9 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Unreleased]
-
-## [0.1.0-beta.1] - 2025-07-11
+## [0.1.0-b1] - 2025-07-11
 
 ### Added
 
@@ -25,14 +23,17 @@ All notable changes to this project will be documented in this file.
 ### Changed
 
 -   `refactor(provider)`: Replace broad `except Exception` with targeted exception handling for network, data, and validation errors.
+-   `refactor(cli)`: Modernize command-line help display to use `subprocess` for better robustness.
 
 ### Docs
 
 -   `docs(readme)`: Revised README for clarity, adding PyPI installation instructions and specific OS requirements.
+-   `docs(help)`: Overhaul help text for improved clarity, structure, and readability.
 
 ### Build
 
 -   `build(packaging)`: Configured the project for PyPI distribution with a `pyproject.toml` and restructured the source layout.
+-   `build(install)`: Reworked `install.sh` to use `pip install -e .` for a standard, editable development setup.
 
 ## [0.1.0-beta.0] - 2025-07-08
 

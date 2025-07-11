@@ -5,6 +5,10 @@ import json
 import logging
 import time
 from typing import Union
+import sys
+import os
+import shutil
+import subprocess
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -1111,8 +1115,32 @@ class StocksTUI(App):
             pass
     #endregion
 
+def show_help():
+    """Displays the help file content using a pager like 'less' if available."""
+    # This path is relative to the location of main.py inside the package
+    help_path = Path(__file__).resolve().parent / "documents" / "help.txt"
+    try:
+        # Use shutil.which to find the path to 'less' in a cross-platform way.
+        pager = shutil.which('less')
+        if pager:
+            # Use subprocess.run for a more robust way to call external commands.
+            subprocess.run([pager, str(help_path)])
+        else:
+            # Fallback to just printing the content if 'less' is not found.
+            with open(help_path, 'r') as f:
+                print(f.read())
+    except FileNotFoundError:
+        print(f"Error: Help file not found at {help_path}")
+    except Exception as e:
+        print(f"An unexpected error occurred while trying to show help: {e}")
+
 def main():
     """The main entry point for the application."""
+    # Check for '-h' or '--help' before initializing the Textual app
+    if "-h" in sys.argv or "--help" in sys.argv:
+        show_help()
+        return
+
     app = StocksTUI()
     app.run()
 

@@ -1,40 +1,44 @@
-StocksTUI Help
+==================================
+  StocksTUI - Help & Keybindings
+==================================
 
-Keybindings:
+Global Commands
+-----------------------------------
+  ?             Toggle this Help Screen
+  q / Z         Quit Application
+  r             Refresh data for the current tab
+  R (Shift+R)   Force refresh data for ALL lists
+  1-9, 0        Switch to the corresponding tab
 
-  q or Z: Quit
-  r:      Refresh
-  R:      Refresh All
-  /:      Search
-  ?:      Toggle Help
-  i:      Focus on table or input field
+Navigation
+-----------------------------------
+  k / Up        Move cursor up / Scroll up
+  j / Down      Move cursor down / Scroll down
+  h / Left      Move cursor left
+  l / Right     Move cursor right
+  Tab           Focus next element
+  Shift+Tab     Focus previous element
 
-  s: Enter Sort Mode
-    Tables:
-    d: Sort by Description/Date
-    p: Sort by Price
-    c: Sort by Change/Close
-    e: Sort by % Change
-    t: Sort by Ticker
-    u: Undo Sort
-    History:
-    o: Sort by Open
-    H: Sort by High
-    L: Sort by Low
-    v: Sort by Volume
+  To scroll horizontally, hold Ctrl or Shift while using the mouse wheel.
 
-  CTRL+c: Copy Text
-  ESC: Dismiss or Focus Tabs
+Table Interaction
+-----------------------------------
+  i             Focus the primary input or table in the current view
+  /             Search the currently visible table
+  Ctrl+C        Copy selected text to the clipboard
+  Esc           Exit sort mode, close search, or dismiss a dialog
 
-  k, up:    Move Cursor Up
-  j, down:  Move Cursor Down
-  h, left:  Move Cursor Left
-  l, right: Move Cursor Right
-  1-0:      Select Tabs 1-10
+  Sort Mode (press 's' to enter):
+    d           Sort by Description (Price View) / Date (History View)
+    c           Sort by Change (Price View) / Close (History View)
+    p, e, t, u  Sort by Price, % Change, Ticker, or Undo Sort (Price View)
+    H, L, o, v  Sort by High, Low, Open, or Volume (History View)
 
-  News:
-  TAB:        Next Link
-  SHIFT+TAB:  Previous Link
-  ENTER:      Open Link
+News View
+-----------------------------------
+  Tab           Cycle to the next link
+  Shift+Tab     Cycle to the previous link
+  Enter         Open the highlighted link in a web browser
 
-Mouse scroll, touch pads, etc., only work in y-axis. Hold CTRL or SHIFT while scrolling for x-axis.
+-----------------------------------
+For command-line options, run: stockstui -h
