@@ -2,6 +2,9 @@
   StocksTUI - Help & Keybindings
 ==================================
 
+NOTE: All ticker symbols must be in the format used by Yahoo Finance
+(e.g., 'AAPL', '^GSPC', 'BTC-USD').
+
 Global Commands
 -----------------------------------
   ?             Toggle this Help Screen

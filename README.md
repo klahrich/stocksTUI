@@ -13,6 +13,8 @@ A Terminal User Interface for monitoring stock prices, news, and historical data
 -   🎨 **Theming** – Dark mode? Light mode? You've got taste, and now you’ve got options.
 -   ⚙️ **Configurable Everything** – Refresh rate, default views, and more are all tweakable from the config screen.
 
+**Note:** All ticker symbols must be in the format used by [Yahoo Finance](https://finance.yahoo.com/) (e.g., `AAPL` for Apple, `^GSPC` for S&P 500, `BTC-USD` for Bitcoin).
+
 ## Requirements
 
 -   **Python:** 3.9 or newer.
@@ -20,15 +22,40 @@ A Terminal User Interface for monitoring stock prices, news, and historical data
     -   **Linux / macOS:** Fully supported.
     -   **Windows:** Requires **Windows Terminal** with PowerShell, or **WSL2**. The application will *not* work correctly in the legacy `cmd.exe` console due to its reliance on advanced terminal features.
 
-## Installation (from PyPI)
+## Installation
 
-The recommended way to install stocksTUI is via `pip`:
+The recommended way to install stocksTUI is with `pipx`. This installs the application and its dependencies in an isolated environment, ensuring that it does not conflict with any other Python packages on your system.
+
+#### 1. Install `pipx`
+
+If you don't have `pipx` installed, you can install it with your system's package manager or with `pip`.
 
 ```bash
-pip install stocksTUI
+# On Debian/Ubuntu
+sudo apt install pipx
+
+# On Arch Linux
+sudo pacman -S python-pipx
+
+# On macOS
+brew install pipx
+
+# Or, using pip (ensure ~/.local/bin is in your PATH)
+python3 -m pip install --user pipx
+python3 -m pipx ensurepath
 ```
 
-Then, simply run the application from your terminal:
+#### 2. Install stocksTUI
+
+Once `pipx` is installed, you can install stocksTUI with a single command:
+
+```bash
+pipx install stocksTUI
+```
+
+## Usage
+
+To run the application, simply execute the following command in your terminal:
 
 ```bash
 stockstui
