@@ -22,6 +22,8 @@ from textual.widgets import (Button, Checkbox, DataTable, Footer,
                              Select, Static, Tab, Tabs, Markdown, Switch, RadioButton)
 from textual import on, work
 from rich.text import Text
+from rich.style import Style
+from textual.color import Color
 
 from stockstui.config_manager import ConfigManager
 from stockstui.common import (PriceDataUpdated, NewsDataUpdated,
@@ -138,6 +140,7 @@ class StocksTUI(App):
         # ConfigManager now needs the path to the package root to find default_configs
         self.config = ConfigManager(Path(__file__).resolve().parent)
         self.refresh_timer = None
+        self._price_comparison_data = {} # Used to store old price data for flashing
         
         # Internal state management variables
         self._last_refresh_times = {}
@@ -420,7 +423,9 @@ class StocksTUI(App):
                 if symbols:
                     try:
                         price_table = self.query_one("#price-table", DataTable)
-                        if force:
+                        # Only show loading spinner if the table is empty.
+                        # On subsequent refreshes, the old data remains visible.
+                        if force and price_table.row_count == 0:
                             price_table.loading = True
                     except NoMatches:
                         pass
@@ -667,6 +672,24 @@ class StocksTUI(App):
 
         try:
             dt = self.query_one("#price-table", DataTable)
+
+            # Store previous values for comparison before updating the table.
+            # This captures the state of the data just before the refresh.
+            if dt.row_count > 0:
+                old_data = {}
+                for row_key_obj in dt.rows:
+                    row_key = row_key_obj.value
+                    if not row_key: continue
+                    try:
+                        change_str = extract_cell_text(dt.get_cell(row_key, "Change"))
+                        if change_str not in ("N/A", "Invalid Ticker", "Data Unavailable"):
+                            old_data[row_key] = {"change": float(change_str.replace(",", ""))}
+                    except (ValueError, KeyError):
+                        continue
+                self._price_comparison_data = old_data
+            else:
+                self._price_comparison_data = {}
+            
             dt.loading = False
             dt.clear()
             
@@ -692,6 +715,22 @@ class StocksTUI(App):
             alias_map = self._get_alias_map()
             rows = formatter.format_price_data_for_table(data_for_table, alias_map)
             self._style_and_populate_price_table(dt, rows)
+
+            # Apply flashes for changed values by comparing new data with old
+            new_data_map = {row[-1]: row for row in rows} # row[-1] is the symbol
+            for ticker, old_values in self._price_comparison_data.items():
+                if ticker in new_data_map and "change" in old_values:
+                    new_change = new_data_map[ticker][2] # index 2 is 'change'
+                    if new_change is not None:
+                        old_change = old_values["change"]
+                        # Round to 2 decimal places to match display and avoid noise.
+                        if round(new_change, 2) > round(old_change, 2):
+                            self.flash_cell(ticker, "Change", "positive")
+                            self.flash_cell(ticker, "% Change", "positive")
+                        elif round(new_change, 2) < round(old_change, 2):
+                            self.flash_cell(ticker, "Change", "negative")
+                            self.flash_cell(ticker, "% Change", "negative")
+
             self._apply_price_table_sort()
             self.query_one("#last-refresh-time").update(now_str)
         except NoMatches: pass
@@ -1113,6 +1152,63 @@ class StocksTUI(App):
             self.query_one(SearchBox).remove()
         except NoMatches:
             pass
+
+    def flash_cell(self, row_key: str, column_key: str, flash_type: str) -> None:
+        """
+        Applies a temporary background color flash to a specific cell in the price table.
+
+        Args:
+            row_key: The key of the row to flash.
+            column_key: The key of the column to flash.
+            flash_type: 'positive' for a green flash, 'negative' for a red flash.
+        """
+        try:
+            dt = self.query_one("#price-table", DataTable)
+            current_content = dt.get_cell(row_key, column_key)
+
+            if not isinstance(current_content, Text):
+                return
+
+            # Determine the flash background color.
+            flash_bg_color_name = self.theme_variables.get("success") if flash_type == "positive" else self.theme_variables.get("error")
+            flash_bg_color = Color.parse(flash_bg_color_name).with_alpha(0.3)
+            
+            # Get the theme's main background color to use for the text during the flash.
+            # This ensures text is readable against the bright flash color.
+            flash_text_color = self.theme_variables.get("background")
+
+            # Create a new Style object for the flash effect.
+            new_style = Style(color=flash_text_color, bgcolor=flash_bg_color.rich_color)
+            
+            # Create a new Text object with the flash style.
+            flashed_content = Text(
+                current_content.plain,
+                style=new_style,
+                justify=current_content.justify
+            )
+            
+            # Update the cell with the flashy content.
+            dt.update_cell(row_key, column_key, flashed_content, update_width=False)
+            
+            # Schedule the "unflash" to restore the original content after a delay.
+            self.set_timer(0.8, lambda: self.unflash_cell(row_key, column_key, current_content))
+        except (KeyError, NoMatches, AttributeError):
+            pass
+
+    def unflash_cell(self, row_key: str, column_key: str, original_content: Text) -> None:
+        """
+        Restores a cell to its original, non-flashed state.
+
+        Args:
+            row_key: The key of the row to restore.
+            column_key: The key of the column to restore.
+            original_content: The original Text object to restore in the cell.
+        """
+        try:
+            dt = self.query_one("#price-table", DataTable)
+            dt.update_cell(row_key, column_key, original_content, update_width=False)
+        except (KeyError, NoMatches):
+            pass # Fail silently if the cell or table is gone.
     #endregion
 
 def show_help():

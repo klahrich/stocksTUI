@@ -1,6 +1,17 @@
 # Change Log
 
-All notable changes to this project will be documented in this file.
+## [0.1.0-b2] - 2025-07-11
+
+### Added
+-   `feat(ux)`: Added background color flash (green for up, red for down) on 'Change' and '% Change' cells to highlight price updates
+-   `feat(ux)`: Improved refresh UX by keeping stale data visible until new data arrives, eliminating loading screen on subsequent refreshes
+-   `feat(ux)`: Enhanced readability with inverted text color during price change flashes
+-   `feat(ux)`: Refined price comparison to round values, avoiding flashes on minor floating-point fluctuations
+
+### Docs
+
+-   `docs(readme, cli)`: Updated `README.md` to recommend `pipx` installation with setup instructions
+-   `docs(readme, cli)`: Added disclaimer in `README.md` and help command requiring tickers in Yahoo Finance format
 
 ## [0.1.0-b1] - 2025-07-11
 
@@ -8,7 +19,7 @@ All notable changes to this project will be documented in this file.
 
 -   `feat(ui)`: Show specific feedback for invalid tickers and data fetching failures in the history and news views.
 -   `feat(news)`: Notify the user when attempting to open an external link.
-
+  
 ### Fixed
 
 -   `fix(config)`: Use atomic writes for config files to prevent data loss.
