@@ -39,9 +39,9 @@ class PortfolioView(Vertical):
         
         # Reduce spacing between elements and align label
         try:
-            # Reduce space between header and content
+            # Add some separation between header and content
             portfolio_content = self.query_one("#portfolio-content")
-            portfolio_content.styles.margin_top = -2
+            portfolio_content.styles.margin_top = 1
             
             # Reduce space between content and buttons
             stock_buttons = self.query_one("#stock-buttons")

@@ -383,9 +383,9 @@ DataTable > Header {
   width: 1fr;
   margin-right: 1;
 }
-/* Reduce space between portfolio header and content */
+/* Add separation between portfolio header and content */
 #portfolio-content {
-  margin-top: -2;
+  margin-top: 1;
 }
 /* Reduce space between portfolio content and stock buttons */
 #stock-buttons {
