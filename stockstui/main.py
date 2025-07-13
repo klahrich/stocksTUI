@@ -40,6 +40,7 @@ from stockstui.presentation import formatter
 from stockstui.utils import extract_cell_text
 from stockstui.database.db_manager import DbManager
 from stockstui.parser import create_arg_parser
+from stockstui.log_handler import TextualHandler
 
 
 # A base template for all themes. It defines the required keys and uses
@@ -1291,11 +1292,12 @@ class StocksTUI(App):
 def main():
     """The main entry point for the application."""
     # Setup basic logging to a file for debugging purposes.
-    # This will capture all logs, even before the TUI is fully running.
+    # This will capture all logs, even if the Textual handler only shows warnings/errors.
     log_file = Path.home() / ".config" / "stockstui" / "stockstui.log"
+    log_file.parent.mkdir(parents=True, exist_ok=True) # Ensure directory exists
     logging.basicConfig(
         level=logging.INFO,
-        format='%(asctime)s - %(levelname)s - %(message)s',
+        format='%(asctime)s - %(levelname)s - %(module)s - %(message)s',
         filename=log_file,
         filemode='w'
     )
@@ -1304,9 +1306,18 @@ def main():
     parser = create_arg_parser()
     args = parser.parse_args()
 
-    # Pass the parsed arguments as a dictionary to the app's constructor.
-    # This keeps the main function clean and delegates logic to the app.
     app = StocksTUI(cli_overrides=vars(args))
+
+    # --- Setup the custom logging handler to show notifications in the TUI ---
+    # This handler will catch WARNING and ERROR messages and display them.
+    textual_handler = TextualHandler(app)
+    textual_handler.setLevel(logging.WARNING)
+    # Use a simple formatter for notifications to avoid extra text.
+    formatter = logging.Formatter('%(message)s')
+    textual_handler.setFormatter(formatter)
+    # Add the handler to the root logger.
+    logging.getLogger().addHandler(textual_handler)
+
     app.run()
 
 if __name__ == "__main__":
