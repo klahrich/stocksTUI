@@ -9,6 +9,7 @@ import sys
 import os
 import shutil
 import subprocess
+import argparse
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -37,6 +38,9 @@ from stockstui.ui.views.debug_view import DebugView
 from stockstui.data_providers import market_provider
 from stockstui.presentation import formatter
 from stockstui.utils import extract_cell_text
+from stockstui.database.db_manager import DbManager
+from stockstui.parser import create_arg_parser
+
 
 # A base template for all themes. It defines the required keys and uses
 # placeholder variables (e.g., '$blue') that will be substituted with
@@ -134,13 +138,29 @@ class StocksTUI(App):
     history_ticker = reactive(None)
     search_target_table = reactive(None)
 
-    def __init__(self):
-        """Initializes the application state and loads configurations."""
+    def __init__(self, cli_overrides: dict | None = None):
+        """
+        Initializes the application state and loads configurations.
+
+        Args:
+            cli_overrides: A dictionary of command-line arguments that override
+                           default behavior for the current session.
+        """
         super().__init__()
+        self.cli_overrides = cli_overrides or {}
+        
         # ConfigManager now needs the path to the package root to find default_configs
         self.config = ConfigManager(Path(__file__).resolve().parent)
         self.refresh_timer = None
         self._price_comparison_data = {} # Used to store old price data for flashing
+        
+        # Initialize the database manager for the persistent cache.
+        self.db_manager = DbManager(self.config.db_path)
+        
+        # --- Pre-populate in-memory cache from persistent DB cache ---
+        # This is a key performance optimization for faster startups.
+        loaded_cache = self.db_manager.load_cache_from_db()
+        market_provider.populate_cache(loaded_cache)
         
         # Internal state management variables
         self._last_refresh_times = {}
@@ -159,6 +179,16 @@ class StocksTUI(App):
         self._sort_mode = False
         self._original_status_text = None
         
+        # --- Handle CLI Overrides ---
+        # If --session-list is used, create temporary lists for this session only.
+        # This modifies the in-memory config *before* the UI is built.
+        if session_lists := self.cli_overrides.get('session_list'):
+            for name, tickers in session_lists.items():
+                # Create a simple list structure for the temporary tab.
+                self.config.lists[name] = [
+                    {"ticker": ticker, "alias": ticker, "note": ""} for ticker in tickers
+                ]
+
         self._setup_dynamic_tabs()
 
     def compose(self) -> ComposeResult:
@@ -197,14 +227,43 @@ class StocksTUI(App):
         config_view.query_one("#refresh-interval-input", Input).value = str(self.config.get_setting("refresh_interval", 300.0))
         config_view.query_one("#market-calendar-select", Select).value = self.config.get_setting("market_calendar", "NYSE")
 
+        # --- Determine Start Category and Tickers from CLI Overrides ---
+        start_category = None
+        if self.cli_overrides:
+            if cli_tab := self.cli_overrides.get('tab'):
+                start_category = cli_tab
+            elif cli_history := self.cli_overrides.get('history'):
+                start_category = 'history'
+                if isinstance(cli_history, str): self.history_ticker = cli_history
+            elif cli_news := self.cli_overrides.get('news'):
+                start_category = 'news'
+                if isinstance(cli_news, str): self.news_ticker = cli_news
+            elif self.cli_overrides.get('debug'):
+                start_category = 'debug'
+            elif self.cli_overrides.get('configs'):
+                start_category = 'configs'
+            elif session_lists := self.cli_overrides.get('session_list'):
+                # Default to the first session list created if no other view is specified
+                start_category = next(iter(session_lists))
+        
+        if self.cli_overrides.get('period'):
+            self._history_period = self.cli_overrides['period']
+
         # Perform initial setup and data fetch.
-        self.call_after_refresh(self._rebuild_app)
+        self.call_after_refresh(self._rebuild_app, new_active_category=start_category)
         self.call_after_refresh(self._manage_refresh_timer)
         self.call_after_refresh(self.action_refresh, force=True)
         logging.info("Application mount complete.")
         
     def on_unmount(self) -> None:
-        """Clean up background tasks when the app is closed."""
+        """
+        Clean up background tasks and save the cache to the database on exit.
+        """
+        # Save the current in-memory cache to the persistent DB cache.
+        cache_state = market_provider.get_price_cache_state()
+        self.db_manager.save_cache_to_db(cache_state)
+        self.db_manager.close()
+        
         self.workers.cancel_all()
 
     #region UI and App State Management
@@ -277,9 +336,14 @@ class StocksTUI(App):
         """
         self.tab_map = []
         hidden_tabs = set(self.config.get_setting("hidden_tabs", []))
-        all_possible_categories = ["all"] + list(self.config.lists.keys()) + ["history", "news", "debug"]
+        
+        # Get all list categories, including temporary session lists.
+        all_list_categories = list(self.config.lists.keys())
+        all_possible_categories = ["all"] + all_list_categories + ["history", "news", "debug"]
+        
         for category in all_possible_categories:
-            if category not in hidden_tabs: self.tab_map.append({'name': category.replace("_", " ").capitalize(), 'category': category})
+            if category not in hidden_tabs:
+                self.tab_map.append({'name': category.replace("_", " ").capitalize(), 'category': category})
         self.tab_map.append({'name': "Configs", 'category': 'configs'})
 
     async def _rebuild_app(self, new_active_category: str | None = None):
@@ -299,12 +363,15 @@ class StocksTUI(App):
         
         # Determine which tab should be active after the rebuild.
         try:
+            # Prioritize the category passed from the CLI or other logic
             idx_to_activate = next(i for i, t in enumerate(self.tab_map, start=1) if t['category'] == current_active_cat)
         except (StopIteration, NoMatches):
+            # Fallback to the user's default configured tab
             default_cat = self.config.get_setting("default_tab_category", "all")
             try:
                 idx_to_activate = next(i for i, t in enumerate(self.tab_map, start=1) if t['category'] == default_cat)
             except (StopIteration, NoMatches):
+                # Ultimate fallback to the first tab
                 idx_to_activate = 1
         
         if tabs_widget.tab_count >= idx_to_activate:
@@ -329,6 +396,9 @@ class StocksTUI(App):
         all_cats_for_toggle = ["all"] + list(self.config.lists.keys()) + ["history", "news", "debug"]
         hidden = set(self.config.get_setting("hidden_tabs", []))
         for cat in all_cats_for_toggle:
+            # Don't show session lists in the "Visible Tabs" config panel
+            if self.cli_overrides.get('session_list') and cat in self.cli_overrides['session_list']:
+                continue
             checkbox = Checkbox(cat.replace("_", " ").capitalize(), cat not in hidden, name=cat)
             await vis_container.mount(checkbox)
             
@@ -383,7 +453,11 @@ class StocksTUI(App):
             view = config_view.query_one("#symbol-list-view", ListView)
             current_idx = view.index
             view.clear()
-            categories = list(self.config.lists.keys())
+            
+            # Exclude session lists from the config panel. Use a robust check for None.
+            session_lists = self.cli_overrides.get('session_list') or {}
+            categories = [c for c in self.config.lists.keys() if c not in session_lists]
+
             if not categories:
                 self.active_list_category = None
                 return
@@ -432,9 +506,13 @@ class StocksTUI(App):
                     self.fetch_prices(symbols, force=force, category=category)
 
     def action_toggle_help(self) -> None:
-        """Action to show or hide the help panel."""
-        if self.query("HelpPanel"): self.action_hide_help_panel()
-        else: self.action_show_help_panel()
+        """
+        Toggles the built-in Textual help screen.
+        """
+        if self.query("HelpPanel"):
+            self.action_hide_help_panel()
+        else:
+            self.action_show_help_panel()
 
     def action_move_cursor(self, direction: str) -> None:
         """
@@ -526,11 +604,13 @@ class StocksTUI(App):
             symbols = [s['ticker'] for s in self.config.lists.get(category, [])] if category != 'all' else [s['ticker'] for lst in self.config.lists.values() for s in lst]
             
             # If there's no cached data for this tab's symbols, trigger a fetch.
-            if symbols and not any(s.upper() in market_provider._price_cache for s in symbols):
+            # Use the new helper function for a cleaner check.
+            if symbols and not any(market_provider.is_cached(s) for s in symbols):
                 price_table.loading = True
                 self.fetch_prices(symbols, force=False, category=category)
             else: # Otherwise, populate the table from the existing cache.
-                cached_data = [market_provider._price_cache[s.upper()][1] for s in symbols if s.upper() in market_provider._price_cache]
+                # Use a list comprehension with the new helper function.
+                cached_data = [price for s in symbols if (price := market_provider.get_cached_price(s))]
                 if cached_data:
                     alias_map = self._get_alias_map()
                     rows = formatter.format_price_data_for_table(cached_data, alias_map)
@@ -701,11 +781,8 @@ class StocksTUI(App):
                 symbols_to_display = [s['ticker'] for s in self.config.lists.get(active_category, [])]
 
             # Filter the cached data to only what should be on the current tab.
-            data_for_table = [
-                market_provider._price_cache[s.upper()][1] 
-                for s in symbols_to_display 
-                if s.upper() in market_provider._price_cache
-            ]
+            # Use the new helper function for a cleaner implementation.
+            data_for_table = [price for s in symbols_to_display if (price := market_provider.get_cached_price(s))]
 
             if not data_for_table and symbols_to_display:
                  dt.add_row("[dim]Could not fetch data for any symbols in this list.[/dim]")
@@ -1211,33 +1288,25 @@ class StocksTUI(App):
             pass # Fail silently if the cell or table is gone.
     #endregion
 
-def show_help():
-    """Displays the help file content using a pager like 'less' if available."""
-    # This path is relative to the location of main.py inside the package
-    help_path = Path(__file__).resolve().parent / "documents" / "help.txt"
-    try:
-        # Use shutil.which to find the path to 'less' in a cross-platform way.
-        pager = shutil.which('less')
-        if pager:
-            # Use subprocess.run for a more robust way to call external commands.
-            subprocess.run([pager, str(help_path)])
-        else:
-            # Fallback to just printing the content if 'less' is not found.
-            with open(help_path, 'r') as f:
-                print(f.read())
-    except FileNotFoundError:
-        print(f"Error: Help file not found at {help_path}")
-    except Exception as e:
-        print(f"An unexpected error occurred while trying to show help: {e}")
-
 def main():
     """The main entry point for the application."""
-    # Check for '-h' or '--help' before initializing the Textual app
-    if "-h" in sys.argv or "--help" in sys.argv:
-        show_help()
-        return
+    # Setup basic logging to a file for debugging purposes.
+    # This will capture all logs, even before the TUI is fully running.
+    log_file = Path.home() / ".config" / "stockstui" / "stockstui.log"
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s',
+        filename=log_file,
+        filemode='w'
+    )
+    
+    # Use the custom parser to handle command-line arguments.
+    parser = create_arg_parser()
+    args = parser.parse_args()
 
-    app = StocksTUI()
+    # Pass the parsed arguments as a dictionary to the app's constructor.
+    # This keeps the main function clean and delegates logic to the app.
+    app = StocksTUI(cli_overrides=vars(args))
     app.run()
 
 if __name__ == "__main__":

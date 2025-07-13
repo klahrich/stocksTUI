@@ -109,7 +109,9 @@ class ConfigView(Vertical):
         table.clear()
         if self.app.active_list_category:
             muted_color = self.app.theme_variables.get("text-muted", "dim")
-            for item in self.app.config.lists.get(self.app.active_list_category, []):
+            # Get the tickers for the active category.
+            list_data = self.app.config.lists.get(self.app.active_list_category, [])
+            for item in list_data:
                 ticker = item['ticker']
                 alias = item.get('alias', ticker) # Use ticker as alias if not specified
                 note_raw = item.get('note') or 'N/A'

@@ -42,8 +42,33 @@ class HistoryView(Vertical):
         yield Container(id="history-display-container")
 
     def on_mount(self) -> None:
-        """Called when the HistoryView is mounted. Triggers initial data rendering."""
-        self.call_after_refresh(self._render_historical_data)
+        """
+        Called when the HistoryView is mounted.
+        Applies any CLI overrides and triggers initial data rendering.
+        """
+        # --- Apply CLI Overrides ---
+        if self.app.cli_overrides:
+            # If --chart was passed, enable the chart view toggle
+            if self.app.cli_overrides.get('chart'):
+                self.query_one("#history-view-toggle", Switch).value = True
+            
+            # If --period was passed, select the corresponding radio button
+            if period_arg := self.app.cli_overrides.get('period'):
+                period_map = {
+                    "1d": "1D", "5d": "5D", "1mo": "1M", "6mo": "6M",
+                    "ytd": "YTD", "1y": "1Y", "5y": "5Y", "max": "All"
+                }
+                target_label = period_map.get(period_arg)
+                if target_label:
+                    radio_set = self.query_one("#history-range-select", VimRadioSet)
+                    for button in radio_set.query(RadioButton):
+                        button.value = (str(button.label) == target_label)
+
+        # Trigger data fetch if a ticker is already set (either from CLI or app state)
+        if self.app.history_ticker:
+            self.call_after_refresh(self._request_historical_data)
+        else:
+            self.call_after_refresh(self._render_historical_data)
 
     async def _render_historical_data(self):
         """
