@@ -756,9 +756,6 @@ class StocksTUI(App):
             dt.loading = False
             dt.clear()
             
-            # FIX: Simplify the data handling logic. Use the data from the message
-            # directly, filtering it for the symbols relevant to the current view.
-            # This is more direct and less prone to errors than re-querying the cache.
             symbols_on_screen = set()
             if active_category == 'all':
                 symbols_on_screen = {s['ticker'] for lst in self.config.lists.values() for s in lst}
@@ -1093,11 +1090,15 @@ class StocksTUI(App):
             self.query_one(SearchBox).focus()
             return
         except NoMatches: pass
+
         category = self.get_active_category()
-        target_id = ""
+        # FIX: Remove redundant initialization. The variable is always assigned
+        # a new value inside the following conditional blocks.
+        target_id = None
         if category and category not in ['history', 'news', 'configs', 'debug']: target_id = "#price-table"
         elif category == 'debug': target_id = "#debug-table"
         elif category == 'configs': target_id = "#ticker-table"
+        
         if not target_id:
             self.bell(); return
         try:

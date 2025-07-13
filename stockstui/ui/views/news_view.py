@@ -106,24 +106,22 @@ class NewsView(Vertical):
         """
         markdown_widget = self.query_one(Markdown)
 
-        # Guard against trying to process a non-string or when no link is selected
         if not isinstance(self._original_markdown, str) or self._current_link_index == -1:
             markdown_widget.update(self._original_markdown)
             return
 
-        # Regex to find Markdown links: [text](url)
-        link_pattern = re.compile(r'\[(.*?)\]\((.*?)\)')
+        # FIX: Harden the regex to handle brackets in link text by matching any
+        # character *except* the closing bracket. This prevents mismatched pairs.
+        link_pattern = re.compile(r'\[([^\]]*)\]\(([^)]*)\)')
         link_counter = 0
 
         def replacer(match):
             nonlocal link_counter
             original_text = match.group(1)
             url = match.group(2)
-            # Remove the indicator from previous highlights before adding a new one
             clean_text = original_text.replace("➤ ", "")
             
             if link_counter == self._current_link_index:
-                # Prepend a simple, safe indicator to the link text
                 replacement = f"[{'➤ ' + clean_text}]({url})"
             else:
                 replacement = f"[{clean_text}]({url})"
@@ -131,15 +129,11 @@ class NewsView(Vertical):
             link_counter += 1
             return replacement
 
-        # We must re-run the replacement over the *original* markdown each time
-        # to prevent indicators from stacking up.
         new_content = link_pattern.sub(replacer, self._original_markdown)
         markdown_widget.update(new_content)
 
-        # Scroll the view to the highlighted link for better UX
         if self._link_urls and len(self._link_urls) > 1:
             scroll_percentage = (self._current_link_index / (len(self._link_urls) - 1)) * 100
-            # Calculate scroll position based on widget's virtual size
             if markdown_widget.virtual_size.height > markdown_widget.container_size.height:
                 max_scroll_y = markdown_widget.virtual_size.height - markdown_widget.container_size.height
                 target_y = (scroll_percentage / 100) * max_scroll_y
@@ -150,13 +144,12 @@ class NewsView(Vertical):
         if not self._link_urls:
             return
 
-        # Move focus away from the input widget so this view captures Enter keys.
         if self.query_one(Input).has_focus:
             self.query_one(Markdown).focus()
 
         self._current_link_index += 1
         if self._current_link_index >= len(self._link_urls):
-            self._current_link_index = 0 # Wrap around to the first link
+            self._current_link_index = 0
         
         self._highlight_current_link()
 
@@ -165,13 +158,12 @@ class NewsView(Vertical):
         if not self._link_urls:
             return
 
-        # Move focus away from the input widget so this view captures Enter keys.
         if self.query_one(Input).has_focus:
             self.query_one(Markdown).focus()
 
         self._current_link_index -= 1
         if self._current_link_index < 0:
-            self._current_link_index = len(self._link_urls) - 1 # Wrap around to the last link
+            self._current_link_index = len(self._link_urls) - 1
         
         self._highlight_current_link()
 
@@ -185,15 +177,8 @@ class NewsView(Vertical):
             self.app.notify(f"Opening {url_to_open}...")
             webbrowser.open(url_to_open)
         except webbrowser.Error:
-            # This is the most common and actionable error.
-            self.app.notify(
-                "No web browser found. Please configure your system's default browser.",
-                severity="error",
-                timeout=8
-            )
+            self.app.notify("No web browser found. Please configure your system's default browser.", severity="error", timeout=8)
         except IndexError:
-            # This indicates a potential logic error in the app.
             self.app.notify("Internal error: Invalid link index.", severity="error")
         except Exception as e:
-            # Catch any other unexpected errors.
             self.app.notify(f"An unexpected error occurred: {e}", severity="error")

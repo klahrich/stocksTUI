@@ -94,7 +94,8 @@ class ConfigManager:
                 # --- Backup corrupted file before overwriting ---
                 try:
                     backup_path = user_path.with_suffix(user_path.suffix + '.bak')
-                    os.rename(user_path, backup_path)
+                    # Use os.replace for an atomic move operation, even if backup exists
+                    os.replace(user_path, backup_path)
                     logging.info(f"Corrupted file '{user_path.name}' has been backed up to '{backup_path.name}'.")
                 except OSError as backup_err:
                     logging.error(f"Could not back up corrupted file '{user_path}': {backup_err}")
@@ -129,9 +130,9 @@ class ConfigManager:
         """
         Safely saves a dictionary to a JSON file using an atomic operation.
 
-        This writes to a temporary file first, then renames it to the final
+        This writes to a temporary file first, then replaces the final
         destination. This prevents file corruption if the write operation is
-        interrupted.
+        interrupted. `os.replace` is used for cross-platform atomic behavior.
 
         Args:
             filename: The name of the file to save (e.g., 'settings.json').
@@ -142,8 +143,10 @@ class ConfigManager:
         try:
             with open(temp_path, 'w') as f:
                 json.dump(data, f, indent=4)
-            # The rename operation is atomic on most modern filesystems.
-            os.rename(temp_path, user_path)
+            # FIX: Use os.replace() instead of os.rename() for cross-platform
+            # atomic replacement, as os.rename() fails on Windows if the
+            # destination file already exists.
+            os.replace(temp_path, user_path)
         except IOError as e:
             logging.error(f"Could not save to '{filename}': {e}")
         finally:

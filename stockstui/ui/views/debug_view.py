@@ -28,12 +28,11 @@ class DebugView(Vertical):
         """
         button_id = event.button.id
         
-        # --- FIX: Disable all buttons immediately to prevent race conditions and ensure UI consistency. ---
         for button in self.query(".debug-buttons Button"):
             button.disabled = True
             
         container = self.query_one("#debug-output-container")
-        await container.remove_children() # Clear previous test results
+        await container.remove_children()
         
         if button_id == "debug-compare-info":
             # Special handling for Compare Ticker Info, which requires a modal input
@@ -49,7 +48,7 @@ class DebugView(Vertical):
                     
                     self.app.run_info_comparison_test(ticker)
                 else: 
-                    # --- FIX: User cancelled the modal, so re-enable buttons and restore initial state. ---
+                    # FIX: User cancelled the modal, so re-enable buttons and restore initial state.
                     await container.mount(Static("[dim]Run a test to see results.[/dim]", id="info-message"))
                     for button in self.query(".debug-buttons Button"):
                         button.disabled = False
@@ -61,7 +60,7 @@ class DebugView(Vertical):
             await container.mount(DataTable(id="debug-table"))
             dt = self.query_one("#debug-table", DataTable)
             
-            dt.loading = True # Show loading indicator
+            dt.loading = True
             
             if button_id == "debug-test-tickers":
                 dt.add_columns("Symbol", "Valid?", "Description", "Latency")
