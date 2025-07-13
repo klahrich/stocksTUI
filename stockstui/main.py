@@ -27,13 +27,15 @@ from textual.color import Color
 
 from stockstui.config_manager import ConfigManager
 from stockstui.common import (PriceDataUpdated, NewsDataUpdated,
-                              TickerDebugDataUpdated, ListDebugDataUpdated, CacheTestDataUpdated,
-                              MarketStatusUpdated, HistoricalDataUpdated, TickerInfoComparisonUpdated)
+                               TickerDebugDataUpdated, ListDebugDataUpdated, CacheTestDataUpdated,
+                               MarketStatusUpdated, HistoricalDataUpdated, TickerInfoComparisonUpdated,
+                               PortfolioDataUpdated)
 from stockstui.ui.widgets.search_box import SearchBox
 from stockstui.ui.views.config_view import ConfigView
 from stockstui.ui.views.history_view import HistoryView
 from stockstui.ui.views.news_view import NewsView
 from stockstui.ui.views.debug_view import DebugView
+from stockstui.ui.views.portfolio_view import PortfolioView
 from stockstui.data_providers import market_provider
 from stockstui.presentation import formatter
 from stockstui.utils import extract_cell_text
@@ -277,9 +279,15 @@ class StocksTUI(App):
         """
         self.tab_map = []
         hidden_tabs = set(self.config.get_setting("hidden_tabs", []))
-        all_possible_categories = ["all"] + list(self.config.lists.keys()) + ["history", "news", "debug"]
+        all_possible_categories = ["all"] + list(self.config.lists.keys()) + ["portfolio", "history", "news", "debug"]
         for category in all_possible_categories:
-            if category not in hidden_tabs: self.tab_map.append({'name': category.replace("_", " ").capitalize(), 'category': category})
+            if category not in hidden_tabs:
+                # Use "Market Lists" instead of "Stocks" for better UI clarity
+                if category == "stocks":
+                    display_name = "Market Lists"
+                else:
+                    display_name = category.replace("_", " ").capitalize()
+                self.tab_map.append({'name': display_name, 'category': category})
         self.tab_map.append({'name': "Configs", 'category': 'configs'})
 
     async def _rebuild_app(self, new_active_category: str | None = None):
@@ -326,7 +334,7 @@ class StocksTUI(App):
         
         vis_container = config_view.query_one("#visible-tabs-container")
         await vis_container.remove_children()
-        all_cats_for_toggle = ["all"] + list(self.config.lists.keys()) + ["history", "news", "debug"]
+        all_cats_for_toggle = ["all"] + list(self.config.lists.keys()) + ["portfolio", "history", "news", "debug"]
         hidden = set(self.config.get_setting("hidden_tabs", []))
         for cat in all_cats_for_toggle:
             checkbox = Checkbox(cat.replace("_", " ").capitalize(), cat not in hidden, name=cat)
@@ -418,7 +426,19 @@ class StocksTUI(App):
                 self.fetch_prices(all_symbols, force=True, category='all')
         else:
             category = self.get_active_category()
-            if category and category not in ["history", "news", "debug", "configs"]:
+            if category == 'portfolio':
+                # Get the active portfolio and its tickers from the PortfolioView
+                try:
+                    portfolio_view = self.query_one(PortfolioView)
+                    active_portfolio = portfolio_view.active_portfolio
+                    if active_portfolio:
+                        tickers = self.config.portfolios.get(active_portfolio, {}).get('tickers', [])
+                        if tickers:
+                            portfolio_view.loading = True
+                            self.fetch_portfolio_prices(active_portfolio, tickers, force_refresh=force)
+                except NoMatches:
+                    pass
+            elif category and category not in ["history", "news", "debug", "configs"]:
                 symbols = [s['ticker'] for s in self.config.lists.get(category, [])] if category != 'all' else [s['ticker'] for lst in self.config.lists.values() for s in lst]
                 if symbols:
                     try:
@@ -512,6 +532,8 @@ class StocksTUI(App):
             await output_container.mount(NewsView())
         elif category == 'debug':
             await output_container.mount(DebugView())
+        elif category == 'portfolio':
+            await output_container.mount(PortfolioView())
         else: # This is a price view for 'all' or a specific list
             await output_container.mount(DataTable(id="price-table", zebra_stripes=True))
             price_table = self.query_one("#price-table", DataTable)
@@ -607,6 +629,17 @@ class StocksTUI(App):
         data = market_provider.run_cache_test(lists)
         total_time = time.perf_counter() - start_time
         self.post_message(CacheTestDataUpdated(data, total_time))
+        
+    @work(exclusive=True, thread=True)
+    def fetch_portfolio_prices(self, portfolio_name: str, tickers: list[str], force_refresh: bool = False):
+        """Worker to fetch price data for a portfolio."""
+        try:
+            portfolio_name, tickers, price_data = market_provider.get_portfolio_price_data(
+                portfolio_name, tickers, force_refresh
+            )
+            self.post_message(PortfolioDataUpdated(portfolio_name, tickers, price_data))
+        except Exception as e:
+            logging.error(f"Worker fetch_portfolio_prices failed for portfolio '{portfolio_name}': {e}")
 
     def _style_and_populate_price_table(self, price_table: DataTable, rows: list[tuple]):
         """
@@ -883,6 +916,19 @@ class StocksTUI(App):
             self.query_one("#last-refresh-time").update(total_time_text)
         except NoMatches: pass
     
+    @on(PortfolioDataUpdated)
+    async def on_portfolio_data_updated(self, message: PortfolioDataUpdated):
+        """Handles arrival of portfolio price data."""
+        try:
+            portfolio_view = self.query_one(PortfolioView)
+            portfolio_view.update_portfolio_data(
+                message.portfolio_name,
+                message.tickers,
+                message.price_data
+            )
+        except NoMatches:
+            pass
+     
     def _apply_price_table_sort(self) -> None:
         """Applies the current sort order to the price table."""
         if self._sort_column_key is None: return

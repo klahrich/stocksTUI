@@ -1,0 +1,17 @@
+{
+    "tech": {
+        "name": "Technology",
+        "description": "Technology sector stocks",
+        "tickers": ["AAPL", "MSFT", "GOOGL", "META", "NVDA"]
+    },
+    "finance": {
+        "name": "Financial",
+        "description": "Banking and financial services",
+        "tickers": ["JPM", "BAC", "GS", "MS", "V"]
+    },
+    "energy": {
+        "name": "Energy",
+        "description": "Oil, gas, and renewable energy companies",
+        "tickers": ["XOM", "CVX", "COP", "BP", "SHEL"]
+    }
+}

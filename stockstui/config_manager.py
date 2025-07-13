@@ -34,6 +34,7 @@ class ConfigManager:
         self.lists: dict = self._load_or_create('lists.json')
         self.themes: dict = self._load_or_create('themes.json')
         self.descriptions: dict = self._load_or_create('descriptions.json')
+        self.portfolios: dict = self._load_or_create('portfolios.json')
 
     def _load_or_create(self, filename: str) -> dict:
         """
@@ -171,6 +172,10 @@ class ConfigManager:
     def save_descriptions(self):
         """Saves the current in-memory descriptions cache to the user's descriptions.json file."""
         self._atomic_save('descriptions.json', self.descriptions)
+        
+    def save_portfolios(self):
+        """Saves the current in-memory portfolios to the user's portfolios.json file."""
+        self._atomic_save('portfolios.json', self.portfolios)
 
     def get_description(self, ticker: str) -> str | None:
         """

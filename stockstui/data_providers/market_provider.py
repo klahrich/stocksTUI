@@ -434,3 +434,20 @@ def run_cache_test(lists: dict[str, list[str]]) -> list[dict]:
     
     results.sort(key=lambda x: x['latency'], reverse=True)
     return results
+
+def get_portfolio_price_data(portfolio_name: str, tickers: list[str], force_refresh: bool = False) -> tuple[str, list[str], list[dict]]:
+    """
+    Fetches current market price information for all tickers in a portfolio.
+    
+    Args:
+        portfolio_name: The name of the portfolio.
+        tickers: A list of ticker symbols in the portfolio.
+        force_refresh: If True, bypasses the cache for all tickers.
+        
+    Returns:
+        A tuple containing (portfolio_name, tickers, price_data).
+    """
+    # Fetch price data for all tickers in the portfolio
+    price_data = get_market_price_data(tickers, force_refresh=force_refresh)
+    
+    return (portfolio_name, tickers, price_data)

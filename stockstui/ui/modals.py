@@ -205,3 +205,53 @@ class CompareInfoModal(ModalScreen[str | None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         """Handles input submission (Enter key), triggering the submit logic."""
         self._submit()
+
+class EditPortfolioModal(ModalScreen[tuple[str, str] | None]):
+    """A modal dialog for creating or editing a portfolio."""
+    def __init__(self, name: str, description: str) -> None:
+        """
+        Args:
+            name: The current name of the portfolio (empty for new portfolios).
+            description: The current description of the portfolio.
+        """
+        super().__init__()
+        self._name = name  # Use _name to avoid conflict with any potential name property
+        self._description = description
+    
+    def compose(self) -> ComposeResult:
+        """Creates the layout for the portfolio edit modal."""
+        with Vertical(id="dialog"):
+            yield Label("Portfolio Name:")
+            yield Input(value=self._name, id="portfolio-name-input", validators=[NotEmpty()])
+            
+            yield Label("Description:")
+            yield Input(value=self._description, id="portfolio-description-input")
+            
+            with Horizontal(id="dialog-buttons"):
+                yield Button("Save", variant="primary", id="save")
+                yield Button("Cancel", id="cancel")
+    
+    def on_mount(self) -> None:
+        """Sets focus to the name input field when the modal is mounted."""
+        self.query_one("#portfolio-name-input").focus()
+    
+    def _submit(self) -> None:
+        """Validates the inputs and dismisses the modal with the portfolio data."""
+        name_input = self.query_one("#portfolio-name-input", Input)
+        if name_input.validate(name_input.value).is_valid:
+            name = name_input.value.strip()
+            description = self.query_one("#portfolio-description-input").value.strip()
+            self.dismiss((name, description))
+    
+    @on(Button.Pressed)
+    def on_button_pressed(self, event: Button.Pressed) -> None:
+        """Handles button presses (Save or Cancel)."""
+        if event.button.id == "cancel":
+            self.dismiss(None)
+        elif event.button.id == "save":
+            self._submit()
+    
+    @on(Input.Submitted)
+    def on_input_submitted(self, event: Input.Submitted) -> None:
+        """Handles input submission (Enter key), triggering the submit logic."""
+        self._submit()

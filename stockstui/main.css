@@ -320,6 +320,109 @@ DataTable > Header {
   height: 5; /* Input height (3) + 2*padding (1+1) */
 }
 
+/* Portfolio View Styling */
+#portfolio-container {
+  height: 1fr;
+  layout: vertical;
+  overflow: auto;
+  scrollbar-color: $panel;
+  scrollbar-color-hover: $accent;
+}
+
+/* Reduce spacing in portfolio view */
+.portfolio-header {
+  margin-bottom: 0;
+}
+
+.section-header {
+  margin-top: 0;
+  margin-bottom: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+}
+
+.portfolio-content {
+  margin-top: -1;
+  padding: 0;
+  margin-bottom: 0;
+}
+
+.portfolio-controls {
+  height: 5;
+  layout: horizontal;
+  align: left middle;
+  padding: 1 1;
+}
+
+#portfolio-selector {
+  width: 1fr;
+  margin-right: 1;
+}
+
+.portfolio-buttons {
+  height: auto;
+  align: right middle;
+}
+
+.portfolio-buttons Button {
+  margin-left: 1;
+}
+
+#portfolio-table {
+  width: 1fr;
+  height: auto;
+  margin-top: -1;
+}
+
+/* Portfolio Edit Modal */
+#edit-portfolio-modal {
+  width: 60;
+  height: auto;
+  border: thick $primary 80%;
+  background: $surface;
+  padding: 1 2;
+}
+
+#portfolio-name-input {
+  width: 100%;
+  margin-bottom: 1;
+}
+
+#portfolio-tickers-container {
+  width: 100%;
+  height: auto;
+  margin-bottom: 1;
+  border: round $primary;
+  padding: 1 1;
+  overflow-y: auto;
+  max-height: 20;
+}
+
+#portfolio-ticker-input {
+  width: 1fr;
+  margin-right: 1;
+}
+
+#add-ticker-button {
+  width: auto;
+}
+
+.ticker-item {
+  width: 100%;
+  height: 3;
+  layout: horizontal;
+  align: left middle;
+  margin-bottom: 1;
+}
+
+.ticker-label {
+  width: 1fr;
+}
+
+.remove-ticker-button {
+  width: auto;
+}
+
 Footer {
   align-horizontal: right;
 }
