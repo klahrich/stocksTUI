@@ -633,14 +633,20 @@ class StocksTUI(App):
             logging.error(f"Market status worker failed: {e}")
 
     @work(exclusive=True, thread=True)
-    def fetch_news(self, ticker: str):
-        """Worker to fetch news data for a specific ticker."""
+    def fetch_news(self, tickers_str: str):
+        """Worker to fetch news data for one or more tickers."""
         try:
-            data = market_provider.get_news_data(ticker)
-            self.post_message(NewsDataUpdated(ticker, data))
+            # Parse the comma-separated string into a list of tickers
+            tickers = [t.strip().upper() for t in tickers_str.split(',') if t.strip()]
+            if not tickers:
+                self.post_message(NewsDataUpdated(tickers_str, []))
+                return
+
+            data = market_provider.get_news_for_tickers(tickers)
+            self.post_message(NewsDataUpdated(tickers_str, data))
         except Exception as e:
-            logging.error(f"Worker fetch_news failed for {ticker}: {e}")
-            self.post_message(NewsDataUpdated(ticker, None))
+            logging.error(f"Worker fetch_news failed for {tickers_str}: {e}")
+            self.post_message(NewsDataUpdated(tickers_str, None))
             
     @work(exclusive=True, thread=True)
     def fetch_historical_data(self, ticker: str, period: str, interval: str = "1d"):
@@ -762,7 +768,6 @@ class StocksTUI(App):
             elif active_category:
                 symbols_on_screen = {s['ticker'] for s in self.config.lists.get(active_category, [])}
 
-            # Use the data from the message as the source of truth.
             data_for_table = [item for item in message.data if item['symbol'] in symbols_on_screen]
 
             if not data_for_table and symbols_on_screen:
@@ -829,14 +834,15 @@ class StocksTUI(App):
     @on(NewsDataUpdated)
     async def on_news_data_updated(self, message: NewsDataUpdated):
         """Handles arrival of news data, then tells the news view to render it."""
-        self._news_content_for_ticker = message.ticker
+        self._news_content_for_ticker = message.tickers_str
+        
         if message.data is None:
-            error_markdown = (f"**Error:** Could not retrieve news for '{message.ticker}'.\n\n" "This may be due to an invalid symbol or a network connectivity issue.")
+            error_markdown = (f"**Error:** Could not retrieve news for '{message.tickers_str}'.\n\n" "This may be due to an invalid symbol or a network connectivity issue.")
             self._last_news_content = (error_markdown, [])
         else:
             self._last_news_content = formatter.format_news_for_display(message.data)
         
-        if self.get_active_category() == 'news' and self.news_ticker == message.ticker:
+        if self.get_active_category() == 'news' and self.news_ticker == message.tickers_str:
             try:
                 self.query_one(NewsView).update_content(*self._last_news_content)
             except NoMatches: pass
@@ -1092,8 +1098,6 @@ class StocksTUI(App):
         except NoMatches: pass
 
         category = self.get_active_category()
-        # FIX: Remove redundant initialization. The variable is always assigned
-        # a new value inside the following conditional blocks.
         target_id = None
         if category and category not in ['history', 'news', 'configs', 'debug']: target_id = "#price-table"
         elif category == 'debug': target_id = "#debug-table"

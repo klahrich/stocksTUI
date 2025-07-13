@@ -29,75 +29,69 @@ class NewsView(Vertical):
 
     def compose(self) -> ComposeResult:
         """Creates the layout for the news view."""
-        # Prepare data for the ticker suggester
         all_tickers_data = [s for lst in self.app.config.lists.values() for s in lst]
         suggester_data = [(s['ticker'], s.get('note') or s.get('alias', s['ticker'])) for s in all_tickers_data]
         unique_suggester_data = list({t[0]: t for t in suggester_data}.values())
         suggester = TickerSuggester(unique_suggester_data, case_sensitive=False)
 
-        # Ticker input field
         with Horizontal(classes="news-controls"):
             yield Input(
-                placeholder="Enter a ticker...",
+                placeholder="Enter ticker(s), comma-separated...",
                 suggester=suggester,
                 id="news-ticker-input",
-                value=self.app.news_ticker or "" # Pre-fill with last selected ticker
+                value=self.app.news_ticker or ""
             )
-        # Markdown widget to display news content
         yield Markdown(id="news-output-display")
 
     def on_mount(self) -> None:
         """Called when the NewsView is mounted. Sets up initial state and fetches news if a ticker is set."""
-        # Make the Markdown widget focusable to allow it to capture key presses for link navigation
         markdown_widget = self.query_one(Markdown)
         markdown_widget.can_focus = True
         
         if self.app.news_ticker:
-            # Check if the correct news is already cached in the app's main state
             if self.app._news_content_for_ticker == self.app.news_ticker and self.app._last_news_content:
                 self.update_content(*self.app._last_news_content)
             else:
-                # Otherwise, show loading and fetch it from the market provider
                 markdown_widget.update("")
                 markdown_widget.loading = True
                 self.app.fetch_news(self.app.news_ticker)
             
-    def _parse_ticker_from_input(self, value: str) -> str:
-        """Extracts the ticker symbol from a suggestion string ('TICKER - Desc') or raw input."""
-        if ' - ' in value:
-            return value.strip().split(' - ')[0].upper()
-        return value.strip().upper()
+    def _parse_tickers_from_input(self, value: str) -> str:
+        """Cleans and standardizes a comma-separated string of tickers."""
+        tickers = [t.strip().upper() for t in value.split(',') if t.strip()]
+        return ",".join(tickers)
 
     def _reset_link_focus(self):
         """Resets the link navigation state, clearing any highlighted links."""
         self._current_link_index = -1
         self._link_urls = []
-        self._original_markdown = "" # Reset original markdown to clear highlights
+        self._original_markdown = ""
         
     @on(Input.Submitted, '#news-ticker-input')
     def on_news_ticker_submitted(self, event: Input.Submitted):
         """Handles submission of the ticker input, triggering news fetch."""
-        self._reset_link_focus() # Reset link state for new news
+        self._reset_link_focus()
 
-        # Clear app-level cache so we don't show stale news when switching tickers
         self.app._last_news_content = None
         self.app._news_content_for_ticker = None
 
         if event.value:
             markdown_widget = self.query_one(Markdown)
-            self.app.news_ticker = self._parse_ticker_from_input(event.value)
-            markdown_widget.update("") # Clear current display
-            markdown_widget.loading = True # Show loading indicator
-            self.app.fetch_news(self.app.news_ticker)
+            # Standardize the input string before using it.
+            tickers_str = self._parse_tickers_from_input(event.value)
+            self.app.news_ticker = tickers_str
+            markdown_widget.update("")
+            markdown_widget.loading = True
+            self.app.fetch_news(tickers_str)
 
     def update_content(self, markdown: Union[str, Text], urls: list[str]) -> None:
         """Receives new news content and associated URLs, then updates the display."""
         markdown_widget = self.query_one(Markdown)
-        markdown_widget.loading = False # Hide loading indicator
-        self._original_markdown = markdown # Store original for highlighting
-        self._link_urls = urls # Store URLs for navigation
-        self._current_link_index = -1 # Reset link highlight
-        markdown_widget.update(markdown) # Update the Markdown display
+        markdown_widget.loading = False
+        self._original_markdown = markdown
+        self._link_urls = urls
+        self._current_link_index = -1
+        markdown_widget.update(markdown)
 
     def _highlight_current_link(self):
         """
@@ -110,8 +104,6 @@ class NewsView(Vertical):
             markdown_widget.update(self._original_markdown)
             return
 
-        # FIX: Harden the regex to handle brackets in link text by matching any
-        # character *except* the closing bracket. This prevents mismatched pairs.
         link_pattern = re.compile(r'\[([^\]]*)\]\(([^)]*)\)')
         link_counter = 0
 

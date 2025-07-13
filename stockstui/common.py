@@ -9,9 +9,9 @@ class PriceDataUpdated(Message):
         super().__init__()
 
 class NewsDataUpdated(Message):
-    """Posted when news data for a specific ticker is updated."""
-    def __init__(self, ticker: str, data: list[dict]) -> None:
-        self.ticker = ticker
+    """Posted when news data for a specific ticker (or tickers) is updated."""
+    def __init__(self, tickers_str: str, data: list[dict] | None) -> None:
+        self.tickers_str = tickers_str
         self.data = data
         super().__init__()
 

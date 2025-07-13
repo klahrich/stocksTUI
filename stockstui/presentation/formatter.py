@@ -169,9 +169,7 @@ def escape(text: str) -> str:
 def format_news_for_display(news: list[dict]) -> tuple[Union[str, Text], list[str]]:
     """
     Formats a list of news items into a Markdown string for display.
-
-    Also returns a list of URLs for potential future use (e.g., opening in a browser).
-    If there is no news, it returns a styled Rich Text object indicating that.
+    If multiple tickers are present, it indicates the source for each article.
 
     Args:
         news: A list of news item dictionaries from the market provider.
@@ -181,12 +179,17 @@ def format_news_for_display(news: list[dict]) -> tuple[Union[str, Text], list[st
         and a list of the URLs from the news items.
     """
     if not news:
-        # Return a Rich Text object to ensure style tags are parsed correctly.
         return (Text.from_markup("[dim]No news found for this ticker.[/dim]"), [])
     
     text = ""
     urls = []
     for item in news:
+        # FIX: Use standard markdown for styling instead of Rich tags. This is more
+        # robust as it relies on Textual's component classes for styling.
+        source_ticker = item.get('source_ticker')
+        if source_ticker:
+            text += f"Source: **`{source_ticker}`**\n"
+        
         title_raw = item.get('title', 'N/A')
         title = escape(title_raw)
         link = item.get('link', '#')
@@ -200,20 +203,16 @@ def format_news_for_display(news: list[dict]) -> tuple[Union[str, Text], list[st
         summary_raw = item.get('summary', 'N/A')
         summary = escape(summary_raw)
 
-        # Title - Use bolding instead of a header to allow text wrapping.
-        # Add an extra newline to create a paragraph break.
         if title_raw != 'N/A':
             text += f"**[{title}]({link})**\n\n"
             urls.append(link)
         else:
             text += f"**[dim]{title}[/dim]**\n\n"
         
-        # Publisher and Time
         publisher_display = publisher if publisher_raw != 'N/A' else f"[dim]{publisher}[/dim]"
         time_display = publish_time if publish_time_raw != 'N/A' else f"[dim]{publish_time}[/dim]"
         text += f"By {publisher_display} at {time_display}\n\n"
 
-        # Summary
         if summary_raw != 'N/A':
             text += f"**Summary:**\n{summary}\n\n"
         else:

@@ -3,32 +3,25 @@
 ## [unreleased] 
 
 ### Added
+-   `feat(news)`: Added support for viewing a combined news feed for multiple tickers, sorted by publication time.
+-   `feat(cache)`: Implemented a persistent SQLite cache (`app_cache.db`) for price and ticker metadata, significantly improving application startup times.
 -   `feat(cache)`: Added intelligent cache expiration based on market status (open/closed) to optimize API usage and data freshness.
--   `feat(cache)`: Implemented a persistent cache for ticker metadata (exchange, name) to reduce redundant API calls.
--   `feat(logs)`: Implemented in-app notifications for `WARNING` and `ERROR` log messages, providing users with real-time feedback on application issues.
--   `feat(cli)`: Implemented command-line argument parsing, allowing the app to be launched into specific views (e.g., `stockstui --history AAPL`).
--   `feat(cli)`: Added a `--session-list` argument to create temporary, single-session watchlists from the command line.
--   `feat(cache)`: Implemented a persistent SQLite cache (`app_cache.db`) for price data to significantly improve application startup times.
--   `feat(cache)`: Added automatic, age-based pruning of the persistent cache to maintain performance and control file size.
+-   `feat(cli)`: Implemented command-line argument parsing, allowing the app to be launched into specific views (e.g., `stockstui --history AAPL`) and with temporary session-based watchlists.
+-   `feat(logs)`: Implemented in-app notifications for `WARNING` and `ERROR` log messages, providing real-time user feedback.
+-   `feat(logs)`: Added a file logger (`stockstui.log`) to capture detailed debug information.
 
 ### Changed
--   `refactor(cli)`: Dynamically load app version from package metadata instead of hard-coding it.
--   `refactor(cache)`: Converted all caching logic to use timezone-aware UTC datetimes for improved accuracy and reliability.
+-   `refactor(provider)`: Overhauled the data fetching pipeline to be more efficient and robust, eliminating silent failures.
+-   `refactor(cli)`: Dynamically load the app version from package metadata instead of hard-coding it.
+-   `refactor(cache)`: Converted all caching logic to use timezone-aware UTC datetimes for improved accuracy.
 
 ### Fixed
--   `fix(config)`: Use `os.replace` for atomic writes to ensure cross-platform compatibility (especially Windows).
--   `fix(debug)`: Re-enable test buttons correctly when the "Compare Info" modal is cancelled.
--   `fix(news)`: Hardened the link-parsing regex to prevent errors with special characters in news titles.
--   `fix(provider)`: Refactored the data fetching pipeline to resolve a critical bug that caused silent failures and no data to be displayed.
--   `fix(provider)`: Ensured the force refresh option correctly bypasses the market-aware cache logic.
--   `fix(provider)`: Fixed a bug preventing price data from being processed and displayed after a fresh info fetch.
--   `fix(logs)`: Corrected the `TextualHandler` to reliably post notifications from any thread without errors.
--   `fix(cache)`: Reduced the in-memory cache duration to ensure data is properly refreshed when switching tabs.
--   `fix(db)`: Corrected SQLite transaction management to prevent connection state errors and ensure the cache saves reliably on application exit.
--   `fix(db)`: Resolved a `sqlite3.OperationalError` by setting `isolation_level=None` to allow for explicit transaction control.
--   `fix(logs)`: Made the `TextualHandler` thread-safe, preventing a `RuntimeError` when logging errors from the main application thread.
--   `fix(ux)`: Corrected the "Last Refresh" timestamp to update properly after a data fetch.
--   `fix(ux)`: Ensured data is always refreshed (from API or cache) when switching tabs.
+-   `fix(core)`: Improved application stability by correcting database transaction handling and logging thread-safety.
+-   `fix(core)`: Ensured configuration files save atomically on all platforms by using `os.replace`.
+-   `fix(ux)`: Ensured data is always refreshed on tab switch and that the "Last Refresh" timestamp is accurate.
+-   `fix(ui)`: Correctly styled the source ticker in the multi-news view using standard Markdown and CSS.
+-   `fix(news)`: Hardened the link-parsing regex to prevent errors with special characters.
+-   `fix(debug)`: Ensured test buttons in the debug view are correctly re-enabled after a modal is cancelled.
 
 ## [0.1.0-b2] - 2025-07-11
 

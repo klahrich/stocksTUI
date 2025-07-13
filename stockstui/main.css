@@ -320,7 +320,13 @@ DataTable > Header {
   height: 5; /* Input height (3) + 2*padding (1+1) */
 }
 
+/* FIX: Use the standard `$secondary` theme variable for styling. */
+Markdown .strong > .code {
+  color: $success;
+  text-style: bold; /* Ensure it remains bold */
+  background: $surface; /* Match background for seamless look */
+}
+
 Footer {
   align-horizontal: right;
 }
-

@@ -98,15 +98,12 @@ def get_market_price_data_uncached(tickers: list[str]) -> list[dict]:
     data = []
     if not tickers: return []
     
-    # yf.Tickers is a container for yf.Ticker objects. Accessing .info on each
-    # one is how yfinance triggers the download for that specific ticker.
     ticker_objects = yf.Tickers(" ".join(tickers))
-    for ticker_symbol in tickers: # Iterate over our original list to maintain order
+    for ticker_symbol in tickers: 
         try:
             info = ticker_objects.tickers[ticker_symbol].info
 
             if info and info.get('currency'):
-                # Successfully fetched data, update info cache and prepare price data.
                 _info_cache[ticker_symbol] = {"exchange": info.get("exchange"), "shortName": info.get("shortName"), "longName": info.get("longName")}
                 data.append({
                     "symbol": ticker_symbol, "description": info.get('longName', ticker_symbol),
@@ -115,12 +112,11 @@ def get_market_price_data_uncached(tickers: list[str]) -> list[dict]:
                     "fifty_two_week_low": info.get('fiftyTwoWeekLow'), "fifty_two_week_high": info.get('fiftyTwoWeekHigh'),
                 })
             else:
-                # API returned no data, likely an invalid ticker.
-                _info_cache[ticker_symbol] = {}  # Cache failure to prevent re-fetches.
+                _info_cache[ticker_symbol] = {}
                 data.append({"symbol": ticker_symbol, "description": "Invalid Ticker", "price": None, "previous_close": None, "day_low": None, "day_high": None, "fifty_two_week_low": None, "fifty_two_week_high": None})
         except Exception as e:
             logging.warning(f"Data retrieval failed for ticker {ticker_symbol}: {type(e).__name__}")
-            _info_cache[ticker_symbol] = {} # Cache failure
+            _info_cache[ticker_symbol] = {}
             data.append({"symbol": ticker_symbol, "description": "Data Unavailable", "price": None, "previous_close": None, "day_low": None, "day_high": None, "fifty_two_week_low": None, "fifty_two_week_high": None})
     return data
 
@@ -177,8 +173,30 @@ def get_historical_data(ticker: str, period: str, interval: str = "1d"):
         df.attrs['error'] = 'Data Error'
         return df
 
+def get_news_for_tickers(tickers: list[str]) -> list[dict] | None:
+    """
+    Fetches and aggregates news for a list of tickers, then sorts by date.
+    This function calls get_news_data for each ticker and combines the results.
+    """
+    all_news = []
+    for ticker in tickers:
+        # get_news_data handles caching and validation for individual tickers.
+        news_items = get_news_data(ticker)
+        if news_items:
+            all_news.extend(news_items)
+
+    if not all_news:
+        return None if len(tickers) > 0 else []
+
+    # Sort all collected news items by the datetime object, newest first.
+    all_news.sort(key=lambda x: x['publish_datetime_utc'], reverse=True)
+    return all_news
+
 def get_news_data(ticker: str) -> list[dict] | None:
-    """Fetches and processes news articles for a single ticker symbol, with caching."""
+    """
+    Fetches and processes news articles for a single ticker symbol, with caching.
+    Each returned news item is tagged with its source ticker and a raw datetime object.
+    """
     if not ticker: return []
     normalized_ticker = ticker.upper()
     now = datetime.now(timezone.utc)
@@ -186,25 +204,38 @@ def get_news_data(ticker: str) -> list[dict] | None:
         timestamp, cached_data = _news_cache[normalized_ticker]
         if (now - timestamp).total_seconds() < CACHE_CLOSED_MARKET_SECONDS:
             return cached_data
+
     info = get_ticker_info(ticker)
     if not info: return None
+
     raw_news = yf.Ticker(normalized_ticker).news
     if not raw_news: return []
+
     processed_news = []
     for item in raw_news:
         content = item.get('content', {})
         if not content: continue
-        title = content.get('title', 'N/A')
-        summary = content.get('summary', 'N/A')
-        publisher = content.get('provider', {}).get('displayName', 'N/A')
-        link = content.get('canonicalUrl', {}).get('url', '#')
+
+        publish_time_utc = None
         publish_time_str = "N/A"
         if pub_date_str := content.get('pubDate'):
             try:
-                utc_dt = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
-                publish_time_str = utc_dt.astimezone().strftime('%Y-%m-%d %H:%M %Z')
-            except (ValueError, TypeError): publish_time_str = pub_date_str
-        processed_news.append({'title': title, 'summary': summary, 'publisher': publisher, 'link': link, 'publish_time': publish_time_str})
+                # Store the raw datetime object for accurate sorting
+                publish_time_utc = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
+                publish_time_str = publish_time_utc.astimezone().strftime('%Y-%m-%d %H:%M %Z')
+            except (ValueError, TypeError):
+                publish_time_str = pub_date_str
+
+        processed_news.append({
+            'source_ticker': normalized_ticker, # Tag the news with its source
+            'title': content.get('title', 'N/A'),
+            'summary': content.get('summary', 'N/A'),
+            'publisher': content.get('provider', {}).get('displayName', 'N/A'),
+            'link': content.get('canonicalUrl', {}).get('url', '#'),
+            'publish_time': publish_time_str,
+            'publish_datetime_utc': publish_time_utc, # Add raw datetime for sorting
+        })
+    
     _news_cache[normalized_ticker] = (datetime.now(timezone.utc), processed_news)
     return processed_news
 
