@@ -27,6 +27,10 @@ class ConfigManager:
         self.default_dir = app_root / "default_configs"
         self.user_dir.mkdir(parents=True, exist_ok=True)
 
+        # Define the path for the persistent cache database. This file will
+        # be created in the user's config directory.
+        self.db_path = self.user_dir / "app_cache.db"
+
         # Load all primary configurations into memory upon initialization.
         # The _load_or_create method handles the logic of reading user files
         # or creating them from defaults if necessary.

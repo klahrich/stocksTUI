@@ -1,12 +1,13 @@
 import yfinance as yf
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import pandas as pd
 from requests.exceptions import RequestException
 
 # In-memory cache for storing fetched market data to reduce API calls.
-# Keys are ticker symbols (uppercase), values are tuples of (timestamp, data).
+# This acts as the single source of truth during the application's runtime.
+# It is populated from a persistent DB cache on startup and saved on exit.
 _price_cache = {}
 _news_cache = {}
 
@@ -22,15 +23,37 @@ try:
 except ImportError:
     mcal = None
 
+def populate_cache(initial_data: dict):
+    """
+    Populates the in-memory price cache from a dictionary.
+    This is called at startup to load data from the persistent DB cache.
+
+    Args:
+        initial_data: A dictionary mapping tickers to their cached data,
+                      in the format {'TICKER': (timestamp, data_dict)}.
+    """
+    global _price_cache
+    _price_cache.update(initial_data)
+    logging.info(f"In-memory price cache populated with {len(initial_data)} items.")
+
+def get_price_cache_state() -> dict:
+    """
+    Returns the current state of the in-memory price cache.
+    This is used to save the cache to the database on application exit.
+    """
+    return _price_cache
+
 def _clean_cache():
     """Removes entries from the price and news caches that have expired."""
-    now = datetime.now()
+    # Use timezone-aware UTC datetime for all comparisons. This is critical for
+    # ensuring cache logic is not affected by the user's local timezone or DST.
+    now = datetime.now(timezone.utc)
     # Identify and remove expired price data
-    expired_prices = [k for k, (ts, _) in _price_cache.items() if now - ts > timedelta(seconds=CACHE_EXPIRY_SECONDS)]
+    expired_prices = [k for k, (ts, _) in _price_cache.items() if (now - ts).total_seconds() > CACHE_EXPIRY_SECONDS]
     for k in expired_prices:
         del _price_cache[k]
     # Identify and remove expired news data
-    expired_news = [k for k, (ts, _) in _news_cache.items() if now - ts > timedelta(seconds=CACHE_EXPIRY_SECONDS)]
+    expired_news = [k for k, (ts, _) in _news_cache.items() if (now - ts).total_seconds() > CACHE_EXPIRY_SECONDS]
     for k in expired_news:
         del _news_cache[k]
 
@@ -40,7 +63,7 @@ def get_market_price_data(tickers: list[str], force_refresh: bool = False) -> li
 
     This function uses a cache to avoid redundant API calls. It checks which tickers
     need refreshing and only fetches data for those. The final list of data
-    is returned in the same order as the input tickers.
+is returned in the same order as the input tickers.
 
     Args:
         tickers: A list of ticker symbols to fetch data for.
@@ -67,19 +90,21 @@ def get_market_price_data(tickers: list[str], force_refresh: bool = False) -> li
     if force_refresh:
         to_fetch = valid_tickers
     else:
-        now = datetime.now()
+        # Use timezone-aware UTC datetime for all comparisons
+        now = datetime.now(timezone.utc)
         for ticker in valid_tickers:
             if ticker in _price_cache:
                 timestamp, _ = _price_cache[ticker]
                 # Check if the cached data is still fresh
-                if now - timestamp < timedelta(seconds=CACHE_DURATION_SECONDS):
+                if (now - timestamp).total_seconds() < CACHE_DURATION_SECONDS:
                     continue
             to_fetch.append(ticker)
 
     # Fetch data for the tickers that need it and update the cache
     if to_fetch:
         fetched_data = get_market_price_data_uncached(to_fetch)
-        now = datetime.now()
+        # Use timezone-aware UTC datetime for all new timestamps
+        now = datetime.now(timezone.utc)
         for item in fetched_data:
             _price_cache[item['symbol']] = (now, item)
     
@@ -280,10 +305,11 @@ def get_news_data(ticker: str) -> list[dict] | None:
     normalized_ticker = ticker.upper()
 
     # Check cache first
-    now = datetime.now()
+    # Use timezone-aware UTC datetime for all comparisons
+    now = datetime.now(timezone.utc)
     if normalized_ticker in _news_cache:
         timestamp, cached_data = _news_cache[normalized_ticker]
-        if now - timestamp < timedelta(seconds=CACHE_DURATION_SECONDS):
+        if (now - timestamp).total_seconds() < CACHE_DURATION_SECONDS:
             return cached_data
 
     ticker_obj = yf.Ticker(normalized_ticker)
@@ -329,7 +355,8 @@ def get_news_data(ticker: str) -> list[dict] | None:
         })
     
     # Update the cache
-    _news_cache[normalized_ticker] = (datetime.now(), processed_news)
+    # Use timezone-aware UTC datetime for all new timestamps
+    _news_cache[normalized_ticker] = (datetime.now(timezone.utc), processed_news)
     return processed_news
 
 def get_ticker_info_comparison(ticker: str) -> dict:
@@ -434,3 +461,28 @@ def run_cache_test(lists: dict[str, list[str]]) -> list[dict]:
     
     results.sort(key=lambda x: x['latency'], reverse=True)
     return results
+
+def is_cached(ticker: str) -> bool:
+    """
+    Checks if a ticker's price data exists in the cache.
+
+    Args:
+        ticker: The ticker symbol to check.
+
+    Returns:
+        True if the ticker is in the cache, False otherwise.
+    """
+    return ticker.upper() in _price_cache
+
+def get_cached_price(ticker: str) -> dict | None:
+    """
+    Retrieves price data for a ticker from the cache.
+
+    Args:
+        ticker: The ticker symbol to retrieve.
+
+    Returns:
+        A dictionary of price data if found in cache, otherwise None.
+    """
+    entry = _price_cache.get(ticker.upper())
+    return entry[1] if entry else None
