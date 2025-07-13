@@ -736,6 +736,7 @@ class StocksTUI(App):
     async def on_price_data_updated(self, message: PriceDataUpdated):
         """Handles the arrival of new price data from a worker."""
         # Update last refresh time.
+        # BUG FIX: Use datetime.datetime.now() to correctly call the method.
         now_str = f"Last Refresh: {datetime.datetime.now():%H:%M:%S}"
         if message.category == 'all':
             for cat in list(self.config.lists.keys()) + ['all']:
@@ -1008,6 +1009,10 @@ class StocksTUI(App):
         
         active_category = self.get_active_category()
         await self._display_data_for_category(active_category)
+
+        # BUG FIX: Always trigger a refresh on tab activation. This will either
+        # display fresh data from the API or instantly use the cache if data is recent.
+        self.action_refresh()
 
         # Update the 'Last Refresh' status label.
         try:
