@@ -335,29 +335,74 @@ DataTable > Header {
 }
 
 .section-header {
-  margin-top: 0;
-  margin-bottom: 0;
-  padding-top: 0;
-  padding-bottom: 0;
+  text-style: bold;
+  background: $primary;
+  color: $text;
 }
 
-.portfolio-content {
-  margin-top: -1;
-  padding: 0;
-  margin-bottom: 0;
+#info-message {
+  width: 100%;
+  height: 100%;
+  content-align: center middle;
+  color: $foreground;
+  opacity: 0.7;
+}
+
+#news-output-display {
+  height: 1fr;
+  overflow-y: auto;
+  scrollbar-color: $panel;
+  scrollbar-color-hover: $accent;
+}
+
+.news-controls {
+  height: 5; /* Input height (3) + 2*padding (1+1) */
+}
+
+/* Portfolio View Styling */
+#portfolio-container {
+  height: 1fr;
+  layout: vertical;
+  overflow: auto;
+  scrollbar-color: $panel;
+  scrollbar-color-hover: $accent;
+}
+
+.portfolio-header {
+  height: 3; /* Reduce the height of the header */
 }
 
 .portfolio-controls {
-  height: 5;
+  height: auto; /* Let the height adjust to content */
   layout: horizontal;
   align: left middle;
-  padding: 1 1;
+  padding: 0 1; /* Reduce padding */
 }
 
 #portfolio-selector {
   width: 1fr;
   margin-right: 1;
 }
+/* Reduce space between portfolio header and content */
+#portfolio-content {
+  margin-top: -2;
+}
+/* Reduce space between portfolio content and stock buttons */
+#stock-buttons {
+  margin-top: -1;
+}
+/* Vertically center the portfolio label */
+.portfolio-label {
+  margin-top: 1;
+}
+
+/* Ensure the portfolio header has proper vertical alignment */
+.portfolio-header {
+  align-vertical: middle;
+}
+
+
+
 
 .portfolio-buttons {
   height: auto;
@@ -371,7 +416,6 @@ DataTable > Header {
 #portfolio-table {
   width: 1fr;
   height: auto;
-  margin-top: -1;
 }
 
 /* Portfolio Edit Modal */

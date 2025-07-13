@@ -12,20 +12,20 @@ class PortfolioView(Vertical):
     def compose(self) -> ComposeResult:
         """Creates the layout for the portfolio view."""
         # Portfolio selector and management buttons
-        with Horizontal(classes="portfolio-header"):
-            yield Label("Portfolio:", classes="portfolio-label")
+        with Horizontal(id="portfolio-header", classes="portfolio-header"):
+            yield Label("Portfolio:", id="portfolio-label", classes="portfolio-label")
             yield Select([], id="portfolio-select")
             yield Button("New", id="new-portfolio")
             yield Button("Edit", id="edit-portfolio")
             yield Button("Delete", id="delete-portfolio", variant="error")
         
         # Stock table - group label and table in a container with reduced spacing
-        with Vertical(classes="portfolio-content"):
+        with Vertical(id="portfolio-content", classes="portfolio-content"):
             yield Label("Stocks in Portfolio", classes="section-header")
             yield DataTable(id="portfolio-table", zebra_stripes=True)
         
         # Stock management buttons
-        with Horizontal(classes="stock-buttons"):
+        with Horizontal(id="stock-buttons", classes="stock-buttons"):
             yield Button("Add Stock", id="add-stock")
             yield Button("Remove Stock", id="remove-stock", variant="error")
     
@@ -36,6 +36,26 @@ class PortfolioView(Vertical):
         stock_table.add_columns(
             "Ticker", "Description", "Price", "Change", "% Change", "Day's Range"
         )
+        
+        # Reduce spacing between elements and align label
+        try:
+            # Reduce space between header and content
+            portfolio_content = self.query_one("#portfolio-content")
+            portfolio_content.styles.margin_top = -2
+            
+            # Reduce space between content and buttons
+            stock_buttons = self.query_one("#stock-buttons")
+            stock_buttons.styles.margin_top = -1
+            
+            # Vertically center the portfolio label
+            portfolio_label = self.query_one("#portfolio-label")
+            portfolio_label.styles.margin_top = 1
+            
+            # Ensure the header has proper vertical alignment
+            portfolio_header = self.query_one("#portfolio-header")
+            portfolio_header.styles.align = ("left", "middle")
+        except NoMatches:
+            pass
         
         # Populate portfolio selector
         self._populate_portfolio_select()
