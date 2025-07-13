@@ -206,7 +206,20 @@ class StocksTUI(App):
         logging.info("Application mount complete.")
         
     def on_unmount(self) -> None:
-        """Clean up background tasks when the app is closed."""
+        """Clean up background tasks and save settings when the app is closed."""
+        # Save all settings before closing
+        settings_saved = self.config.save_settings()
+        portfolios_saved = self.config.save_portfolios()
+        lists_saved = self.config.save_lists()
+        descriptions_saved = self.config.save_descriptions()
+        
+        # Log the results
+        logging.info(f"Settings saved: {settings_saved}")
+        logging.info(f"Portfolios saved: {portfolios_saved}")
+        logging.info(f"Lists saved: {lists_saved}")
+        logging.info(f"Descriptions saved: {descriptions_saved}")
+        
+        # Cancel all background workers
         self.workers.cancel_all()
 
     #region UI and App State Management

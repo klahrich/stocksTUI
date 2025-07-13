@@ -171,14 +171,16 @@ class PortfolioView(Vertical):
                     'description': description,
                     'tickers': []
                 }
-                self.app.config.save_portfolios()
-                
-                # Refresh the portfolio selector
-                self._populate_portfolio_select()
-                
-                # Select the new portfolio
-                portfolio_select = self.query_one("#portfolio-select", Select)
-                portfolio_select.value = name
+                # Save the new portfolio
+                if self.app.config.save_portfolios():
+                    # Refresh the portfolio selector
+                    self._populate_portfolio_select()
+                    
+                    # Select the new portfolio
+                    portfolio_select = self.query_one("#portfolio-select", Select)
+                    portfolio_select.value = name
+                else:
+                    self.app.notify("Failed to save portfolio. Your changes may not persist when the application is closed.", severity="error", timeout=10)
         
         self.app.push_screen(EditPortfolioModal("", ""), on_modal_close)
     
@@ -204,10 +206,12 @@ class PortfolioView(Vertical):
                     'description': new_description,
                     'tickers': portfolio_data.get('tickers', [])
                 }
-                self.app.config.save_portfolios()
-                
-                # Refresh the portfolio selector
-                self._populate_portfolio_select()
+                # Save the updated portfolio
+                if self.app.config.save_portfolios():
+                    # Refresh the portfolio selector
+                    self._populate_portfolio_select()
+                else:
+                    self.app.notify("Failed to save portfolio. Your changes may not persist when the application is closed.", severity="error", timeout=10)
         
         self.app.push_screen(EditPortfolioModal(name, description), on_modal_close)
     
@@ -226,10 +230,12 @@ class PortfolioView(Vertical):
             if confirmed:
                 # Delete the portfolio
                 del self.app.config.portfolios[portfolio_name]
-                self.app.config.save_portfolios()
-                
-                # Refresh the portfolio selector
-                self._populate_portfolio_select()
+                # Save the updated portfolios
+                if self.app.config.save_portfolios():
+                    # Refresh the portfolio selector
+                    self._populate_portfolio_select()
+                else:
+                    self.app.notify("Failed to save portfolios. Your changes may not persist when the application is closed.", severity="error", timeout=10)
         
         self.app.push_screen(
             ConfirmDeleteModal(
@@ -262,10 +268,12 @@ class PortfolioView(Vertical):
                 
                 tickers.append(ticker.upper())
                 portfolio['tickers'] = tickers
-                self.app.config.save_portfolios()
-                
-                # Reload the portfolio
-                self._load_portfolio(portfolio_name)
+                # Save the updated portfolio
+                if self.app.config.save_portfolios():
+                    # Reload the portfolio
+                    self._load_portfolio(portfolio_name)
+                else:
+                    self.app.notify("Failed to save portfolio. Your changes may not persist when the application is closed.", severity="error", timeout=10)
         
         self.app.push_screen(AddTickerModal(), on_modal_close)
     
@@ -296,10 +304,12 @@ class PortfolioView(Vertical):
                 if ticker in tickers:
                     tickers.remove(ticker)
                     portfolio['tickers'] = tickers
-                    self.app.config.save_portfolios()
-                    
-                    # Reload the portfolio
-                    self._load_portfolio(portfolio_name)
+                    # Save the updated portfolio
+                    if self.app.config.save_portfolios():
+                        # Reload the portfolio
+                        self._load_portfolio(portfolio_name)
+                    else:
+                        self.app.notify("Failed to save portfolio. Your changes may not persist when the application is closed.", severity="error", timeout=10)
         
         self.app.push_screen(
             ConfirmDeleteModal(

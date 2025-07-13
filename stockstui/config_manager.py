@@ -122,31 +122,84 @@ class ConfigManager:
 
         return data
 
-    def _atomic_save(self, filename: str, data: dict):
+    def _atomic_save(self, filename: str, data: dict) -> bool:
         """
         Safely saves a dictionary to a JSON file using an atomic operation.
-
-        This writes to a temporary file first, then renames it to the final
-        destination. This prevents file corruption if the write operation is
-        interrupted.
-
+        
+        This uses a more robust approach that should work on all systems:
+        1. Write to a temporary file
+        2. If successful, copy the temporary file to the destination
+        3. Remove the temporary file
+        
         Args:
             filename: The name of the file to save (e.g., 'settings.json').
             data: The dictionary to serialize and save.
+            
+        Returns:
+            bool: True if the save was successful, False otherwise.
         """
         user_path = self.user_dir / filename
         temp_path = user_path.with_suffix(user_path.suffix + '.tmp')
+        backup_path = user_path.with_suffix(user_path.suffix + '.bak')
+        success = False
+        
         try:
+            # First, write the data to a temporary file
             with open(temp_path, 'w') as f:
                 json.dump(data, f, indent=4)
-            # The rename operation is atomic on most modern filesystems.
-            os.rename(temp_path, user_path)
-        except IOError as e:
-            logging.error(f"Could not save to '{filename}': {e}")
+            
+            # If the destination file exists, create a backup
+            if user_path.exists():
+                try:
+                    import shutil
+                    shutil.copy2(user_path, backup_path)
+                except Exception as backup_err:
+                    logging.warning(f"Could not create backup of '{user_path}': {backup_err}")
+            
+            # Now copy the temporary file to the destination
+            # This is more reliable than os.rename across different filesystems
+            import shutil
+            shutil.copy2(temp_path, user_path)
+            success = True
+            
+            # If everything worked, remove the backup
+            if backup_path.exists():
+                try:
+                    os.remove(backup_path)
+                except Exception:
+                    # Not critical if this fails
+                    pass
+                    
+        except Exception as e:
+            error_msg = f"Could not save to '{filename}': {e}"
+            logging.error(error_msg)
+            
+            # If we have a backup and the save failed, restore from backup
+            if backup_path.exists():
+                try:
+                    import shutil
+                    shutil.copy2(backup_path, user_path)
+                    logging.info(f"Restored '{filename}' from backup after failed save.")
+                except Exception as restore_err:
+                    logging.error(f"Could not restore from backup: {restore_err}")
+            
+            # Try to notify the user if possible
+            try:
+                if hasattr(self, 'app') and self.app:
+                    self.app.notify(error_msg, severity="error", timeout=10)
+            except Exception:
+                # If we can't notify the user, just log it
+                pass
+                
         finally:
-            # Ensure the temporary file is removed in case of an error.
+            # Clean up temporary file
             if temp_path.exists():
-                os.remove(temp_path)
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+        
+        return success
 
     def get_setting(self, key: str, default=None):
         """
@@ -161,21 +214,41 @@ class ConfigManager:
         """
         return self.settings.get(key, default)
 
-    def save_settings(self):
-        """Saves the current in-memory settings to the user's settings.json file."""
-        self._atomic_save('settings.json', self.settings)
-
-    def save_lists(self):
-        """Saves the current in-memory symbol lists to the user's lists.json file."""
-        self._atomic_save('lists.json', self.lists)
-
-    def save_descriptions(self):
-        """Saves the current in-memory descriptions cache to the user's descriptions.json file."""
-        self._atomic_save('descriptions.json', self.descriptions)
+    def save_settings(self) -> bool:
+        """
+        Saves the current in-memory settings to the user's settings.json file.
         
-    def save_portfolios(self):
-        """Saves the current in-memory portfolios to the user's portfolios.json file."""
-        self._atomic_save('portfolios.json', self.portfolios)
+        Returns:
+            bool: True if the save was successful, False otherwise.
+        """
+        return self._atomic_save('settings.json', self.settings)
+
+    def save_lists(self) -> bool:
+        """
+        Saves the current in-memory symbol lists to the user's lists.json file.
+        
+        Returns:
+            bool: True if the save was successful, False otherwise.
+        """
+        return self._atomic_save('lists.json', self.lists)
+
+    def save_descriptions(self) -> bool:
+        """
+        Saves the current in-memory descriptions cache to the user's descriptions.json file.
+        
+        Returns:
+            bool: True if the save was successful, False otherwise.
+        """
+        return self._atomic_save('descriptions.json', self.descriptions)
+        
+    def save_portfolios(self) -> bool:
+        """
+        Saves the current in-memory portfolios to the user's portfolios.json file.
+        
+        Returns:
+            bool: True if the save was successful, False otherwise.
+        """
+        return self._atomic_save('portfolios.json', self.portfolios)
 
     def get_description(self, ticker: str) -> str | None:
         """

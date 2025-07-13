@@ -163,7 +163,9 @@ class ConfigView(Vertical):
         elif event.select.id == "market-calendar-select":
             self.app.config.settings['market_calendar'] = str(event.value)
             self.app.action_refresh(force=True) # Refresh data when market calendar changes
-        self.app.config.save_settings()
+        # Save settings and handle failures
+        if not self.app.config.save_settings():
+            self.app.notify("Failed to save settings. Your changes may not persist when the application is closed.", severity="error", timeout=10)
 
     @on(Checkbox.Changed)
     async def on_tab_visibility_toggled(self, event: Checkbox.Changed):
