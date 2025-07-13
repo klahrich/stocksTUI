@@ -18,15 +18,11 @@ class TextualHandler(logging.Handler):
         """
         super().__init__()
         self.app = app
-        # Store the main thread's identifier to know when we can call app.notify directly.
-        self._main_thread_id = threading.main_thread().ident
 
     def emit(self, record: logging.LogRecord):
         """
         Processes a log record and displays it as a notification in the Textual app.
-
-        This method is thread-safe. It checks if it's being called from the main
-        application thread or a worker thread and calls the appropriate Textual method.
+        This method is thread-safe.
         """
         try:
             # Format the message using the handler's formatter
@@ -39,25 +35,15 @@ class TextualHandler(logging.Handler):
             elif record.levelno >= logging.WARNING:
                 severity = "warning"
             
-            # FIX: The logging handler can be called from both the main thread (e.g., during
-            # on_unmount) and worker threads. We must use `app.notify` directly if on the main
-            # thread, and `app.call_from_thread` if on a worker thread.
-            if threading.current_thread().ident == self._main_thread_id:
-                # We are on the main thread, call notify directly.
-                self.app.notify(
-                    message,
-                    title=record.levelname.capitalize(),
-                    severity=severity,
-                    timeout=8
-                )
-            else:
-                # We are on a worker thread, must use call_from_thread.
-                self.app.call_from_thread(
-                    self.app.notify,
-                    message,
-                    title=record.levelname.capitalize(),
-                    severity=severity,
-                    timeout=8
-                )
+            # FIX: Always use call_from_thread. This is the canonical way to
+            # schedule a callback on the main event loop thread from any thread,
+            # including the main one. It ensures thread-safety without complex checks.
+            self.app.call_from_thread(
+                self.app.notify,
+                message,
+                title=record.levelname.capitalize(),
+                severity=severity,
+                timeout=8
+            )
         except Exception:
             self.handleError(record)

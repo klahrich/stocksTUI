@@ -11,11 +11,13 @@ CACHE_LOAD_DURATION_SECONDS = 86400  # 24 hours
 # This keeps the database file size manageable over time.
 CACHE_PRUNE_EXPIRY_SECONDS = 604800  # 7 days
 
+# Ticker info (exchange, name) changes very rarely. Cache it for a long time.
+INFO_CACHE_EXPIRY_SECONDS = 86400 * 30  # 30 days
 
 class DbManager:
     """
     Manages the persistent SQLite database for caching application data, primarily
-    stock prices, to enable faster startups and reduce API calls.
+    stock prices and ticker metadata, to enable faster startups and reduce API calls.
     """
     def __init__(self, db_path: Path):
         """
@@ -29,7 +31,14 @@ class DbManager:
         try:
             # Ensure the parent directory exists
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            # Set isolation_level to None to disable the driver's automatic
+            # transaction management. This gives us full control over when a
+            # transaction starts and ends with explicit BEGIN/COMMIT calls.
+            self.conn = sqlite3.connect(
+                self.db_path,
+                isolation_level=None,
+                check_same_thread=False
+            )
             self._create_tables()
             self._prune_expired_entries()  # Clean up old data on startup.
         except sqlite3.Error as e:
@@ -41,8 +50,8 @@ class DbManager:
             return
         try:
             cursor = self.conn.cursor()
-            # Stores the price cache. data is a JSON string. timestamp is a Unix timestamp (float).
-            # Using INSERT OR REPLACE requires a PRIMARY KEY.
+            cursor.execute("BEGIN TRANSACTION")
+            # Stores the price cache.
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS price_cache (
                     ticker TEXT PRIMARY KEY,
@@ -50,103 +59,124 @@ class DbManager:
                     timestamp REAL NOT NULL
                 )
             """)
+            # Stores semi-permanent ticker metadata.
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS ticker_info (
+                    ticker TEXT PRIMARY KEY,
+                    exchange TEXT,
+                    short_name TEXT,
+                    long_name TEXT,
+                    timestamp REAL NOT NULL
+                )
+            """)
             self.conn.commit()
         except sqlite3.Error as e:
             logging.error(f"Failed to create database tables: {e}")
+            self.conn.rollback()
 
     def _prune_expired_entries(self):
         """
-        Removes entries from the persistent cache that are older than the prune expiry date.
-        This is a simple, age-based maintenance task to keep the DB size in check.
+        Removes entries from the persistent cache that are older than their prune expiry date.
         """
-        if not self.conn:
-            return
-
+        if not self.conn: return
         try:
             cursor = self.conn.cursor()
-            # Determine the cutoff timestamp for pruning.
-            prune_before_ts = datetime.now(timezone.utc).timestamp() - CACHE_PRUNE_EXPIRY_SECONDS
-            
-            cursor.execute("DELETE FROM price_cache WHERE timestamp < ?", (prune_before_ts,))
-            
-            # Log how many rows were deleted for diagnostics.
-            rows_deleted = cursor.rowcount
-            if rows_deleted > 0:
-                logging.info(f"Pruned {rows_deleted} expired entries from the persistent cache.")
-                self.conn.commit()
+            cursor.execute("BEGIN TRANSACTION")
+
+            # Prune price cache
+            price_prune_ts = datetime.now(timezone.utc).timestamp() - CACHE_PRUNE_EXPIRY_SECONDS
+            cursor.execute("DELETE FROM price_cache WHERE timestamp < ?", (price_prune_ts,))
+            if cursor.rowcount > 0:
+                logging.info(f"Pruned {cursor.rowcount} expired entries from the price cache.")
+
+            # Prune info cache
+            info_prune_ts = datetime.now(timezone.utc).timestamp() - INFO_CACHE_EXPIRY_SECONDS
+            cursor.execute("DELETE FROM ticker_info WHERE timestamp < ?", (info_prune_ts,))
+            if cursor.rowcount > 0:
+                logging.info(f"Pruned {cursor.rowcount} expired entries from the info cache.")
+
+            self.conn.commit()
         except sqlite3.Error as e:
             logging.error(f"Failed to prune expired cache entries: {e}")
+            self.conn.rollback()
 
-    def load_cache_from_db(self) -> dict:
-        """
-        Loads the price cache from the database, filtering for entries fresh enough to use.
-        Converts float timestamps from DB back to datetime objects for in-memory use.
-        """
-        if not self.conn:
-            return {}
-
+    def load_price_cache_from_db(self) -> dict:
+        """Loads the price cache from the database, filtering for entries fresh enough to use."""
+        if not self.conn: return {}
         loaded_data = {}
         try:
             cursor = self.conn.cursor()
-            # Determine the cutoff timestamp for what is considered "fresh" to load.
             load_after_ts = datetime.now(timezone.utc).timestamp() - CACHE_LOAD_DURATION_SECONDS
-            
             cursor.execute("SELECT ticker, data, timestamp FROM price_cache WHERE timestamp >= ?", (load_after_ts,))
             rows = cursor.fetchall()
-            
             for ticker, data_json, timestamp_float in rows:
                 try:
-                    # Convert float timestamp back to a timezone-aware datetime object
                     ts_dt = datetime.fromtimestamp(timestamp_float, tz=timezone.utc)
                     data = json.loads(data_json)
-                    # The value is a tuple of (datetime_object, data_dict) to match the in-memory format.
                     loaded_data[ticker] = (ts_dt, data)
                 except (json.JSONDecodeError, ValueError, TypeError, OSError):
-                    logging.warning(f"Failed to decode or parse data for ticker '{ticker}' from DB cache.")
+                    logging.warning(f"Failed to decode or parse price data for '{ticker}' from DB.")
         except sqlite3.Error as e:
-            logging.error(f"Failed to load cache from database: {e}")
-            
-        logging.info(f"Loaded {len(loaded_data)} fresh items from the persistent cache.")
+            logging.error(f"Failed to load price cache from database: {e}")
+        logging.info(f"Loaded {len(loaded_data)} fresh items from the persistent price cache.")
         return loaded_data
 
-    def save_cache_to_db(self, cache_data: dict):
-        """
-        Saves the current in-memory price cache to the database.
-        Uses 'INSERT OR REPLACE' to efficiently update existing records or add new ones.
-        """
-        if not self.conn:
-            return
-            
+    def load_info_cache_from_db(self) -> dict:
+        """Loads the ticker info cache (exchange, name) from the database."""
+        if not self.conn: return {}
+        loaded_data = {}
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("SELECT ticker, exchange, short_name, long_name FROM ticker_info")
+            rows = cursor.fetchall()
+            for ticker, exchange, short_name, long_name in rows:
+                loaded_data[ticker] = {
+                    "exchange": exchange, "shortName": short_name, "longName": long_name
+                }
+        except sqlite3.Error as e:
+            logging.error(f"Failed to load info cache from database: {e}")
+        logging.info(f"Loaded {len(loaded_data)} items from the persistent info cache.")
+        return loaded_data
+
+    def save_price_cache_to_db(self, cache_data: dict):
+        """Saves the in-memory price cache to the database."""
+        if not self.conn or not cache_data: return
         items_to_save = []
         for ticker, (timestamp_dt, data) in cache_data.items():
             try:
-                data_json = json.dumps(data)
-                # Convert the datetime object to a Unix timestamp (float) for storage.
-                unix_timestamp = timestamp_dt.timestamp()
-                items_to_save.append((ticker, data_json, unix_timestamp))
+                items_to_save.append((ticker, json.dumps(data), timestamp_dt.timestamp()))
             except (TypeError, ValueError, AttributeError):
-                logging.warning(f"Could not serialize data for ticker '{ticker}' to save in cache.")
-
-        if not items_to_save:
-            return
-
+                logging.warning(f"Could not serialize price data for '{ticker}' to save.")
+        if not items_to_save: return
         try:
             cursor = self.conn.cursor()
-            # Use a transaction for an atomic write operation.
             cursor.execute("BEGIN TRANSACTION")
-            
-            # 'INSERT OR REPLACE' is an efficient way to "upsert" data in SQLite.
-            # It will update the row if the ticker (PRIMARY KEY) exists, or insert a new one if not.
-            cursor.executemany(
-                "INSERT OR REPLACE INTO price_cache (ticker, data, timestamp) VALUES (?, ?, ?)",
-                items_to_save
-            )
-            
+            cursor.executemany("INSERT OR REPLACE INTO price_cache (ticker, data, timestamp) VALUES (?, ?, ?)", items_to_save)
             self.conn.commit()
-            logging.info(f"Saved/Updated {len(items_to_save)} items in the persistent cache.")
+            logging.info(f"Saved/Updated {len(items_to_save)} items in the persistent price cache.")
         except sqlite3.Error as e:
-            logging.error(f"Failed to save cache to database: {e}")
-            self.conn.rollback()  # Roll back changes on error
+            logging.error(f"Failed to save price cache to database: {e}")
+            self.conn.rollback()
+
+    def save_info_cache_to_db(self, cache_data: dict):
+        """Saves the in-memory info cache to the database."""
+        if not self.conn or not cache_data: return
+        items_to_save = []
+        now_ts = datetime.now(timezone.utc).timestamp()
+        for ticker, data in cache_data.items():
+            items_to_save.append((
+                ticker, data.get("exchange"), data.get("shortName"), data.get("longName"), now_ts
+            ))
+        if not items_to_save: return
+        try:
+            cursor = self.conn.cursor()
+            cursor.execute("BEGIN TRANSACTION")
+            cursor.executemany("INSERT OR REPLACE INTO ticker_info (ticker, exchange, short_name, long_name, timestamp) VALUES (?, ?, ?, ?, ?)", items_to_save)
+            self.conn.commit()
+            logging.info(f"Saved/Updated {len(items_to_save)} items in the persistent info cache.")
+        except sqlite3.Error as e:
+            logging.error(f"Failed to save info cache to database: {e}")
+            self.conn.rollback()
 
     def close(self):
         """Closes the database connection if it's open."""

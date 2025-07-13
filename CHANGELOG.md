@@ -1,5 +1,24 @@
 # Change Log
 
+## [unreleased]
+
+### Added
+-   `feat(cache)`: Implemented a persistent SQLite cache (`app_cache.db`) for price and ticker metadata, significantly improving application startup times.
+-   `feat(cache)`: Added intelligent cache expiration based on market status (open/closed) to optimize API usage and data freshness.
+-   `feat(cli)`: Implemented command-line argument parsing, allowing the app to be launched into specific views (e.g., `stockstui --history AAPL`).
+-   `feat(cli)`: Added a `--session-list` argument to create temporary, single-session watchlists from the command line.
+-   `feat(logs)`: Implemented in-app notifications for `WARNING` and `ERROR` log messages, providing users with real-time feedback on application issues.
+-   `feat(logs)`: Added a file logger (`stockstui.log`) to capture detailed debug information without cluttering the UI.
+
+### Changed
+-   `refactor(provider)`: Overhauled the data fetching pipeline to be more efficient and robust, eliminating silent failures.
+-   `refactor(cli)`: Dynamically load the app version from package metadata instead of hard-coding it, ensuring consistency.
+-   `refactor(cache)`: Converted all caching logic to use timezone-aware UTC datetimes for improved accuracy and reliability.
+
+### Fixed
+-   `fix(ux)`: Corrected the "Last Refresh" timestamp to update properly after a data fetch.
+-   `fix(ux)`: Ensured data is always refreshed (from API or cache) when switching tabs.
+
 ## [0.1.0-b2] - 2025-07-11
 
 ### Added
