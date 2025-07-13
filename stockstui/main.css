@@ -386,6 +386,11 @@ DataTable > Header {
 /* Add separation between portfolio header and content */
 #portfolio-content {
   margin-top: 1;
+  height: 1fr;
+  min-height: 30; /* Add minimum height to ensure the content area is larger */
+  overflow: auto;
+  scrollbar-color: $panel;
+  scrollbar-color-hover: $accent;
 }
 /* Reduce space between portfolio content and stock buttons */
 #stock-buttons {

@@ -379,20 +379,3 @@ The application includes a debug tab with tools for:
 StocksTUI is a well-structured application that follows good software engineering practices. The MVC architecture, event-driven design, and modular organization make it maintainable and extensible. The newly implemented portfolio tracking feature demonstrates how to integrate new functionality into the existing architecture.
 
 By understanding the patterns and principles outlined in this document, developers can effectively contribute to the project and implement new features that align with the established technical standards.
-
-## 15. Recommended UI Improvements
-
-### 15.1 Tab Naming Clarification
-
-To better differentiate between the purpose of different tabs, the following naming changes are recommended:
-
-1. Rename the "Stocks" tab to "Market Lists" to clarify that it displays predefined lists of market instruments
-2. Keep the "Portfolio" tab as is, since its purpose is clear - to display user-defined portfolios
-
-This change will help users understand the distinct purposes of each tab:
-- **Market Lists**: For viewing predefined categories of market instruments (stocks, crypto, etc.)
-- **Portfolio**: For viewing personalized groupings of instruments that users are tracking
-
-### 15.2 Implementation Notes
-
-To implement this change, modify the `_setup_dynamic_tabs()` method in `main.py` to display "Market Lists" instead of "Stocks" when creating the tab labels. This is a UI-only change that doesn't affect the underlying data structure, which still uses "stocks" as the category key.
