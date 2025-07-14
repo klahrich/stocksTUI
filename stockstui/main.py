@@ -25,6 +25,7 @@ from textual import on, work
 from rich.text import Text
 from rich.style import Style
 from textual.color import Color
+from platformdirs import PlatformDirs
 
 from stockstui.config_manager import ConfigManager
 from stockstui.common import (PriceDataUpdated, NewsDataUpdated,
@@ -108,8 +109,8 @@ class StocksTUI(App):
     BINDINGS = [
         Binding("q", "quit", "Quit", priority=True, show=True),
         Binding("Z", "quit", "Quit", priority=True, show=False),
-        Binding("r", "refresh(True)", "Refresh", show=True),
-        Binding("R", "refresh_all", "Refresh All", show=True),
+        Binding("r", "refresh(False)", "Refresh", show=True),
+        Binding("R", "refresh(True)", "Force Refresh", show=True),
         Binding("s", "enter_sort_mode", "Sort", show=True),
         Binding("/", "focus_search", "Search", show=True),
         Binding("?", "toggle_help", "Toggle Help", show=True),
@@ -153,7 +154,8 @@ class StocksTUI(App):
         # ConfigManager now needs the path to the package root to find default_configs
         self.config = ConfigManager(Path(__file__).resolve().parent)
         self.refresh_timer = None
-        self._price_comparison_data = {} # Used to store old price data for flashing
+        # This dictionary holds the last known prices to compare against for flashing.
+        self._price_comparison_data = {}
         
         # Initialize the database manager for the persistent cache.
         self.db_manager = DbManager(self.config.db_path)
@@ -252,8 +254,7 @@ class StocksTUI(App):
         # Perform initial setup and data fetch.
         self.call_after_refresh(self._rebuild_app, new_active_category=start_category)
         self.call_after_refresh(self._manage_refresh_timer)
-        self.call_after_refresh(self.action_refresh, force=True)
-        logging.info("Application mount complete.")
+        self.call_after_refresh(self.action_refresh)
         
     def on_unmount(self) -> None:
         """
@@ -442,7 +443,8 @@ class StocksTUI(App):
         if self.config.get_setting("auto_refresh", False):
             try:
                 interval = float(self.config.get_setting("refresh_interval", 300.0))
-                self.refresh_timer = self.set_interval(interval, lambda: self.action_refresh(force=True))
+                # Auto-refresh should always be a "smart" refresh, not a force refresh.
+                self.refresh_timer = self.set_interval(interval, lambda: self.action_refresh(force=False))
             except (ValueError, TypeError):
                 logging.error("Invalid refresh interval.")
 
@@ -473,35 +475,29 @@ class StocksTUI(App):
         except NoMatches:
             pass
     
-    def action_refresh_all(self) -> None:
-        """Action to force-refresh all price data, bypassing the cache."""
-        self.action_refresh(force=True, force_all=True)
-
-    def action_refresh(self, force: bool = False, force_all: bool = False):
+    def action_refresh(self, force: bool = False):
         """
         Refreshes data for the current view.
-        - force: Bypasses the cache for the current tab's symbols.
-        - force_all: Bypasses the cache for *all* symbols across all lists.
+        - force: If True, bypasses the smart expiry cache for all symbols.
         """
-        # Fetch the global market status (e.g. NYSE) for the status bar display
         self.fetch_market_status(self.config.get_setting("market_calendar", "NYSE"))
         
-        if force_all:
-            self.notify("Force refreshing all symbols in the background...")
-            all_symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
-            if all_symbols:
-                self.fetch_prices(all_symbols, force=True, category='all')
-        else:
-            category = self.get_active_category()
-            if category and category not in ["history", "news", "debug", "configs"]:
-                symbols = [s['ticker'] for s in self.config.lists.get(category, [])] if category != 'all' else [s['ticker'] for lst in self.config.lists.values() for s in lst]
-                if symbols:
-                    try:
-                        price_table = self.query_one("#price-table", DataTable)
-                        if force and price_table.row_count == 0:
-                            price_table.loading = True
-                    except NoMatches: pass
-                    self.fetch_prices(symbols, force=force, category=category)
+        category = self.get_active_category()
+        if category and category not in ["history", "news", "debug", "configs"]:
+            symbols = [s['ticker'] for s in self.config.lists.get(category, [])] if category != 'all' else [s['ticker'] for lst in self.config.lists.values() for s in lst]
+            if symbols:
+                try:
+                    price_table = self.query_one("#price-table", DataTable)
+                    # Before fetching, store the current prices for comparison.
+                    self._price_comparison_data = {
+                        row_key.value: float(extract_cell_text(price_table.get_cell(row_key.value, "Price")).replace("$","").replace(",",""))
+                        for row_key in price_table.rows if price_table.get_cell(row_key.value, "Price") != "N/A"
+                    }
+                    if force and price_table.row_count == 0:
+                        price_table.loading = True
+                except (NoMatches, ValueError, TypeError):
+                    self._price_comparison_data = {}
+                self.fetch_prices(symbols, force=force, category=category)
 
     def action_toggle_help(self) -> None:
         """
@@ -690,7 +686,7 @@ class StocksTUI(App):
     def _style_and_populate_price_table(self, price_table: DataTable, rows: list[tuple]):
         """
         Applies dynamic styling (colors) to the raw data and populates
-        the main price table.
+        the main price table. Also handles flashing cells on price changes.
         """
         price_color = self.theme_variables.get("price", "cyan")
         success_color = self.theme_variables.get("success", "green")
@@ -698,7 +694,7 @@ class StocksTUI(App):
         muted_color = self.theme_variables.get("text-muted", "dim")
 
         for row_data in rows:
-            desc, price, change, change_percent, day_range, week_range, symbol = row_data
+            desc, price, change, change_percent, day_range, week_range, symbol, change_direction = row_data
             
             if desc == 'Invalid Ticker':
                 desc_text = Text(desc, style=error_color)
@@ -727,6 +723,13 @@ class StocksTUI(App):
             week_range_text = Text(week_range, style=muted_color if week_range == "N/A" else "", justify="right")
             ticker_text = Text(symbol, style=muted_color)
             price_table.add_row(desc_text, price_text, change_text, change_percent_text, day_range_text, week_range_text, ticker_text, key=symbol)
+            
+            if change_direction == 'up':
+                self.flash_cell(symbol, "Change", "positive")
+                self.flash_cell(symbol, "% Change", "positive")
+            elif change_direction == 'down':
+                self.flash_cell(symbol, "Change", "negative")
+                self.flash_cell(symbol, "% Change", "negative")
 
     @on(PriceDataUpdated)
     async def on_price_data_updated(self, message: PriceDataUpdated):
@@ -744,30 +747,26 @@ class StocksTUI(App):
 
         try:
             dt = self.query_one("#price-table", DataTable)
-            if dt.row_count > 0:
-                old_data = {}
-                for row_key_obj in dt.rows:
-                    row_key = row_key_obj.value
-                    if not row_key: continue
-                    try:
-                        change_str = extract_cell_text(dt.get_cell(row_key, "Change"))
-                        if change_str not in ("N/A", "Invalid Ticker", "Data Unavailable"):
-                            old_data[row_key] = {"change": float(change_str.replace(",", ""))}
-                    except (ValueError, KeyError):
-                        continue
-                self._price_comparison_data = old_data
-            else:
-                self._price_comparison_data = {}
-            
             dt.loading = False
             dt.clear()
             
-            symbols_on_screen = set()
-            if active_category == 'all':
-                symbols_on_screen = {s['ticker'] for lst in self.config.lists.values() for s in lst}
-            elif active_category:
-                symbols_on_screen = {s['ticker'] for s in self.config.lists.get(active_category, [])}
+            # --- FIX: Compare new data with old, and tag it for the UI ---
+            new_comparison_data = {}
+            for item in message.data:
+                symbol = item['symbol']
+                new_price = item.get('price')
+                old_price = self._price_comparison_data.get(symbol)
 
+                if old_price is not None and new_price is not None:
+                    if round(new_price, 2) > round(old_price, 2):
+                        item['change_direction'] = 'up'
+                    elif round(new_price, 2) < round(old_price, 2):
+                        item['change_direction'] = 'down'
+                
+                if new_price is not None:
+                    new_comparison_data[symbol] = new_price
+
+            symbols_on_screen = {s['ticker'] for lst in self.config.lists.values() for s in lst} if active_category == 'all' else {s['ticker'] for s in self.config.lists.get(active_category, [])}
             data_for_table = [item for item in message.data if item['symbol'] in symbols_on_screen]
 
             if not data_for_table and symbols_on_screen:
@@ -777,20 +776,10 @@ class StocksTUI(App):
             alias_map = self._get_alias_map()
             rows = formatter.format_price_data_for_table(data_for_table, alias_map)
             self._style_and_populate_price_table(dt, rows)
-
-            new_data_map = {row[-1]: row for row in rows}
-            for ticker, old_values in self._price_comparison_data.items():
-                if ticker in new_data_map and "change" in old_values:
-                    new_change = new_data_map[ticker][2]
-                    if new_change is not None:
-                        old_change = old_values["change"]
-                        if round(new_change, 2) > round(old_change, 2):
-                            self.flash_cell(ticker, "Change", "positive")
-                            self.flash_cell(ticker, "% Change", "positive")
-                        elif round(new_change, 2) < round(old_change, 2):
-                            self.flash_cell(ticker, "Change", "negative")
-                            self.flash_cell(ticker, "% Change", "negative")
-
+            
+            # Update the comparison data state for the next refresh cycle.
+            self._price_comparison_data = new_comparison_data
+            
             self._apply_price_table_sort()
             self.query_one("#last-refresh-time").update(now_str)
         except NoMatches: pass
@@ -835,7 +824,6 @@ class StocksTUI(App):
     async def on_news_data_updated(self, message: NewsDataUpdated):
         """Handles arrival of news data, then tells the news view to render it."""
         self._news_content_for_ticker = message.tickers_str
-        
         if message.data is None:
             error_markdown = (f"**Error:** Could not retrieve news for '{message.tickers_str}'.\n\n" "This may be due to an invalid symbol or a network connectivity issue.")
             self._last_news_content = (error_markdown, [])
@@ -949,6 +937,40 @@ class StocksTUI(App):
                 except (ValueError, TypeError): return (1, 0)
             table.sort(key=sort_key, reverse=self._history_sort_reverse)
         except (NoMatches, KeyError): logging.error(f"Could not find history table or column for sort key '{self._history_sort_column_key}'")
+    
+    def flash_cell(self, row_key: str, column_key: str, flash_type: str) -> None:
+        """Applies a temporary background color flash to a specific cell in the price table."""
+        try:
+            dt = self.query_one("#price-table", DataTable)
+            current_content = dt.get_cell(row_key, column_key)
+
+            if not isinstance(current_content, Text): return
+
+            flash_color_name = self.theme_variables.get("success") if flash_type == "positive" else self.theme_variables.get("error")
+            bg_color = Color.parse(flash_color_name).with_alpha(0.3)
+            
+            flash_text_color = self.theme_variables.get("background")
+            new_style = Style(color=flash_text_color, bgcolor=bg_color.rich_color)
+            
+            flashed_content = Text(
+                current_content.plain,
+                style=new_style,
+                justify=current_content.justify
+            )
+            
+            dt.update_cell(row_key, column_key, flashed_content, update_width=False)
+            
+            self.set_timer(0.8, lambda: self.unflash_cell(row_key, column_key, current_content))
+        except (KeyError, NoMatches, AttributeError):
+            pass
+
+    def unflash_cell(self, row_key: str, column_key: str, original_content: Text) -> None:
+        """Restores a cell to its original, non-flashed state."""
+        try:
+            dt = self.query_one("#price-table", DataTable)
+            dt.update_cell(row_key, column_key, original_content, update_width=False)
+        except (KeyError, NoMatches):
+            pass
     #endregion
 
     #region Event Handlers & Actions
@@ -1096,7 +1118,6 @@ class StocksTUI(App):
             self.query_one(SearchBox).focus()
             return
         except NoMatches: pass
-
         category = self.get_active_category()
         target_id = None
         if category and category not in ['history', 'news', 'configs', 'debug']: target_id = "#price-table"
@@ -1136,37 +1157,40 @@ class StocksTUI(App):
         """Removes the search box when the user presses Enter."""
         try: self.query_one(SearchBox).remove()
         except NoMatches: pass
-
-    def flash_cell(self, row_key: str, column_key: str, flash_type: str) -> None:
-        """Applies a temporary background color flash to a specific cell in the price table."""
-        try:
-            dt = self.query_one("#price-table", DataTable)
-            current_content = dt.get_cell(row_key, column_key)
-            if not isinstance(current_content, Text): return
-            flash_bg_color_name = self.theme_variables.get("success") if flash_type == "positive" else self.theme_variables.get("error")
-            flash_bg_color = Color.parse(flash_bg_color_name).with_alpha(0.3)
-            flash_text_color = self.theme_variables.get("background")
-            new_style = Style(color=flash_text_color, bgcolor=flash_bg_color.rich_color)
-            flashed_content = Text(current_content.plain, style=new_style, justify=current_content.justify)
-            dt.update_cell(row_key, column_key, flashed_content, update_width=False)
-            self.set_timer(0.8, lambda: self.unflash_cell(row_key, column_key, current_content))
-        except (KeyError, NoMatches, AttributeError): pass
-
-    def unflash_cell(self, row_key: str, column_key: str, original_content: Text) -> None:
-        """Restores a cell to its original, non-flashed state."""
-        try:
-            dt = self.query_one("#price-table", DataTable)
-            dt.update_cell(row_key, column_key, original_content, update_width=False)
-        except (KeyError, NoMatches): pass
     #endregion
+
+def show_manual():
+    """Displays the help file content using a pager like 'less' if available."""
+    help_path = Path(__file__).resolve().parent / "documents" / "help.txt"
+    try:
+        pager = shutil.which('less')
+        if pager:
+            subprocess.run([pager, str(help_path)])
+        else:
+            with open(help_path, 'r') as f:
+                print(f.read())
+    except FileNotFoundError:
+        print(f"Error: Help file not found at {help_path}")
+    except Exception as e:
+        print(f"An unexpected error occurred while trying to show help: {e}")
 
 def main():
     """The main entry point for the application."""
-    log_file = Path.home() / ".config" / "stockstui" / "stockstui.log"
-    log_file.parent.mkdir(parents=True, exist_ok=True)
+    dirs = PlatformDirs("stockstui", "andriy-git")
+    
+    cache_dir = Path(dirs.user_cache_dir)
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    log_file = cache_dir / "stockstui.log"
+    
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(module)s - %(message)s', filename=log_file, filemode='w')
+    
     parser = create_arg_parser()
     args = parser.parse_args()
+
+    if args.man:
+        show_manual()
+        return
+
     app = StocksTUI(cli_overrides=vars(args))
     textual_handler = TextualHandler(app)
     textual_handler.setLevel(logging.WARNING)
