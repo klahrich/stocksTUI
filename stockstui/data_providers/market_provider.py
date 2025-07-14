@@ -4,134 +4,145 @@ from datetime import datetime, timedelta, timezone
 import time
 import pandas as pd
 from requests.exceptions import RequestException
+import requests
 
 # In-memory cache for storing fetched market data to reduce API calls.
-# This acts as the single source of truth during the application's runtime.
-# It is populated from a persistent DB cache on startup and saved on exit.
 _price_cache = {}
 _news_cache = {}
-_info_cache = {} # Cache for semi-static data like exchange and company name.
+_info_cache = {}
+_market_calendars = {}
 
-# Duration for which cached data is considered fresh if a market is OPEN.
-CACHE_OPEN_MARKET_SECONDS = 300  # 5 minutes
-
-# Duration for which cached data is considered fresh if a market is CLOSED.
-CACHE_CLOSED_MARKET_SECONDS = 86400  # 24 hours
-
-# Duration after which stale cache entries are removed entirely.
-CACHE_EXPIRY_SECONDS = 86400 * 2 # Cache clean is 2 days
+# Duration for which cached news is considered fresh.
+NEWS_CACHE_DURATION_SECONDS = 300  # 5 minutes
 
 try:
-    # pandas_market_calendars is an optional dependency for market status checks.
     import pandas_market_calendars as mcal
 except ImportError:
     mcal = None
 
+def _get_calendar(exchange_name: str):
+    if exchange_name in _market_calendars:
+        return _market_calendars[exchange_name]
+    exchange_map = {"NMS": "NYSE", "NYQ": "NYSE", "NYS": "NYSE", "GDAX": "CME_Crypto"}
+    calendar_name = exchange_map.get(exchange_name, exchange_name)
+    if mcal is None: return None
+    try:
+        calendar = mcal.get_calendar(calendar_name)
+        _market_calendars[exchange_name] = calendar
+        return calendar
+    except Exception:
+        return None
+
+def _calculate_info_expiry(exchange_name: str) -> datetime:
+    now = datetime.now(timezone.utc)
+    cal = _get_calendar(exchange_name)
+    if cal is None: return now + timedelta(hours=24)
+    try:
+        schedule = cal.schedule(start_date=now.date(), end_date=now.date() + timedelta(days=7))
+        if not schedule.empty:
+            for next_close in schedule.market_close:
+                if next_close > now:
+                    return next_close + timedelta(minutes=5)
+    except Exception: pass
+    return now + timedelta(hours=24)
+
 def populate_price_cache(initial_data: dict):
-    """Populates the in-memory price cache from a dictionary."""
-    global _price_cache
-    _price_cache.update(initial_data)
+    global _price_cache; _price_cache.update(initial_data)
     logging.info(f"In-memory price cache populated with {len(initial_data)} items.")
 
 def populate_info_cache(initial_data: dict):
-    """Populates the in-memory info cache from a dictionary."""
-    global _info_cache
-    _info_cache.update(initial_data)
+    global _info_cache; _info_cache.update(initial_data)
     logging.info(f"In-memory info cache populated with {len(initial_data)} items.")
 
-def get_price_cache_state() -> dict:
-    """Returns the current state of the in-memory price cache."""
-    return _price_cache
-
-def get_info_cache_state() -> dict:
-    """Returns the current state of the in-memory info cache."""
-    return _info_cache
+def get_price_cache_state() -> dict: return _price_cache
+def get_info_cache_state() -> dict: return _info_cache
 
 def get_market_price_data(tickers: list[str], force_refresh: bool = False) -> list[dict]:
-    """
-    Acts as a gatekeeper for data fetching. It determines which tickers need
-    a refresh based on market status and cache freshness, then delegates the
-    actual API calls to `get_market_price_data_uncached`.
-    """
     seen = set()
     valid_tickers = [t.upper() for t in tickers if t and t.upper() not in seen and not seen.add(t.upper())]
     if not valid_tickers: return []
 
-    to_fetch = []
     now = datetime.now(timezone.utc)
-
-    if force_refresh:
-        to_fetch = valid_tickers
-    else:
-        for ticker in valid_tickers:
-            info = _info_cache.get(ticker)
-            
-            # If we don't know the exchange, assume market is open to be safe.
-            # This makes it likely to be fetched, at which point we'll get the info.
-            is_open = True
-            if info and info.get("exchange"):
-                is_open = get_market_status(info["exchange"]).get('is_open', True)
-
-            duration = CACHE_OPEN_MARKET_SECONDS if is_open else CACHE_CLOSED_MARKET_SECONDS
-
-            if ticker in _price_cache:
-                timestamp, _ = _price_cache[ticker]
-                if (now - timestamp).total_seconds() < duration:
-                    continue  # Price data is fresh enough, skip.
-            
-            to_fetch.append(ticker)
-
-    if to_fetch:
-        fetched_data = get_market_price_data_uncached(to_fetch)
-        now_ts = datetime.now(timezone.utc)
-        for item in fetched_data:
-            _price_cache[item['symbol']] = (now_ts, item)
     
-    return [price for ticker in valid_tickers if (entry := _price_cache.get(ticker)) and (price := entry[1])]
+    slow_data_to_fetch, fast_data_to_fetch = [], []
+    for ticker in valid_tickers:
+        if force_refresh or ticker not in _price_cache or now >= _price_cache[ticker].get('expiry', now):
+            slow_data_to_fetch.append(ticker)
 
-def get_market_price_data_uncached(tickers: list[str]) -> list[dict]:
-    """
-    The single worker function for fetching price data. For a given list of tickers,
-    it fetches the full `.info` object and uses it to populate BOTH the info cache
-    (exchange, name) and the returned price data list.
-    """
-    data = []
-    if not tickers: return []
+        info = _info_cache.get(ticker, {})
+        exchange = info.get("exchange", "NYSE")
+        if get_market_status(exchange).get('is_open'):
+            fast_data_to_fetch.append(ticker)
     
+    if slow_data_to_fetch:
+        _fetch_and_cache_slow_data(slow_data_to_fetch)
+    
+    live_prices = _fetch_fast_data(fast_data_to_fetch) if fast_data_to_fetch else {}
+        
+    final_data = []
+    for ticker in valid_tickers:
+        if ticker in _price_cache:
+            merged_item = _price_cache[ticker].get('data', {}).copy()
+            if ticker in live_prices:
+                merged_item.update(live_prices[ticker])
+            final_data.append(merged_item)
+            
+    return final_data
+
+def _fetch_and_cache_slow_data(tickers: list[str]):
+    if not tickers: return
     ticker_objects = yf.Tickers(" ".join(tickers))
-    for ticker_symbol in tickers: 
+    for ticker in tickers:
         try:
-            info = ticker_objects.tickers[ticker_symbol].info
-
-            if info and info.get('currency'):
-                _info_cache[ticker_symbol] = {"exchange": info.get("exchange"), "shortName": info.get("shortName"), "longName": info.get("longName")}
-                data.append({
-                    "symbol": ticker_symbol, "description": info.get('longName', ticker_symbol),
-                    "price": info.get('currentPrice', info.get('regularMarketPrice')),
-                    "previous_close": info.get('previousClose'), "day_low": info.get('dayLow'), "day_high": info.get('dayHigh'),
-                    "fifty_two_week_low": info.get('fiftyTwoWeekLow'), "fifty_two_week_high": info.get('fiftyTwoWeekHigh'),
-                })
+            slow_info = ticker_objects.tickers[ticker].info
+            fast_info = ticker_objects.tickers[ticker].fast_info
+            
+            if slow_info and slow_info.get('currency'):
+                exchange = slow_info.get("exchange", "NYSE")
+                _info_cache[ticker] = {"exchange": exchange, "shortName": slow_info.get("shortName"), "longName": slow_info.get("longName")}
+                _price_cache[ticker] = {
+                    "expiry": _calculate_info_expiry(exchange),
+                    "data": {
+                        "symbol": ticker,
+                        "description": slow_info.get('longName', ticker),
+                        "price": fast_info.get('lastPrice') or slow_info.get('currentPrice'),
+                        "previous_close": slow_info.get('regularMarketPreviousClose') or slow_info.get('previousClose'),
+                        "day_low": fast_info.get('dayLow') or slow_info.get('regularMarketDayLow'),
+                        "day_high": fast_info.get('dayHigh') or slow_info.get('regularMarketDayHigh'),
+                        "fifty_two_week_low": slow_info.get('fiftyTwoWeekLow'),
+                        "fifty_two_week_high": slow_info.get('fiftyTwoWeekHigh'),
+                    }
+                }
             else:
-                _info_cache[ticker_symbol] = {}
-                data.append({"symbol": ticker_symbol, "description": "Invalid Ticker", "price": None, "previous_close": None, "day_low": None, "day_high": None, "fifty_two_week_low": None, "fifty_two_week_high": None})
-        except Exception as e:
-            logging.warning(f"Data retrieval failed for ticker {ticker_symbol}: {type(e).__name__}")
-            _info_cache[ticker_symbol] = {}
-            data.append({"symbol": ticker_symbol, "description": "Data Unavailable", "price": None, "previous_close": None, "day_low": None, "day_high": None, "fifty_two_week_low": None, "fifty_two_week_high": None})
-    return data
+                _price_cache[ticker] = {'expiry': datetime.now(timezone.utc) + timedelta(days=1), 'data': {"symbol": ticker, "description": "Invalid Ticker"}}
+        except Exception:
+            logging.warning(f"Failed to fetch slow data for {ticker}")
+            _price_cache[ticker] = {'expiry': datetime.now(timezone.utc) + timedelta(days=1), 'data': {"symbol": ticker, "description": "Data Unavailable"}}
+
+def _fetch_fast_data(tickers: list[str]) -> dict:
+    if not tickers: return {}
+    live_prices = {}
+    ticker_objects = yf.Tickers(" ".join(tickers))
+    for ticker in tickers:
+        try:
+            fast_info = ticker_objects.tickers[ticker].fast_info
+            if fast_info and fast_info.get('lastPrice'):
+                live_prices[ticker] = {
+                    "price": fast_info.get('lastPrice'),
+                    "day_low": fast_info.get('dayLow'),
+                    "day_high": fast_info.get('dayHigh'),
+                }
+        except Exception:
+            logging.warning(f"Failed to fetch fast data for {ticker}")
+    return live_prices
+
 
 def get_ticker_info(ticker: str) -> dict | None:
-    """
-    Retrieves semi-static information for a ticker (exchange, name).
-    Checks in-memory cache first, then falls back to an API call.
-    """
-    if ticker in _info_cache:
-        return _info_cache[ticker]
-    
+    if ticker in _info_cache: return _info_cache[ticker]
     try:
         info = yf.Ticker(ticker).info
-        if not info or info.get('currency') is None:
-            _info_cache[ticker] = {} # Cache failure
+        if not info or not info.get('currency'):
+            _info_cache[ticker] = {}
             return None
         _info_cache[ticker] = {"exchange": info.get("exchange"), "shortName": info.get("shortName"), "longName": info.get("longName")}
         return _info_cache[ticker]
@@ -140,24 +151,24 @@ def get_ticker_info(ticker: str) -> dict | None:
         return None
 
 def get_market_status(calendar_name='NYSE') -> dict:
-    """Gets the current status of a stock market exchange."""
     if calendar_name == 'GDAX': calendar_name = 'CME_Crypto'
-    if mcal is None: return {'status': 'closed', 'is_open': False}
+    cal = _get_calendar(calendar_name)
+    if not cal: return {'status': 'unknown', 'is_open': True}
     try:
-        cal = mcal.get_calendar(calendar_name)
         now = pd.Timestamp.now(tz=cal.tz)
         schedule = cal.schedule(start_date=now.date(), end_date=now.date())
         if schedule.empty:
-            return {'status': 'closed', 'is_open': False, 'calendar': calendar_name}
+            holidays_obj = cal.holidays()
+            is_holiday = pd.Timestamp(now.date()).normalize() in pd.DatetimeIndex(holidays_obj.holidays)
+            reason = 'Holiday' if is_holiday else 'Weekend'
+            return {'status': 'closed', 'is_open': False, 'holiday': reason, 'calendar': calendar_name}
         market_open, market_close = schedule.iloc[0].market_open, schedule.iloc[0].market_close
-        session = 'closed'
-        if market_open <= now < market_close: session = 'open'
+        session = 'open' if market_open <= now < market_close else 'closed'
         return {'status': session, 'is_open': session == 'open', 'calendar': calendar_name}
     except Exception:
         return {'status': 'unknown', 'is_open': True, 'calendar': calendar_name or 'Unknown'}
 
 def get_historical_data(ticker: str, period: str, interval: str = "1d"):
-    """Fetches historical market data (OHLCV) for a given ticker."""
     df = pd.DataFrame()
     df.attrs['symbol'] = ticker.upper()
     try:
@@ -166,140 +177,119 @@ def get_historical_data(ticker: str, period: str, interval: str = "1d"):
             df.attrs['error'] = 'Invalid Ticker'
             return df
         data = yf.Ticker(ticker).history(period=period, interval=interval)
-        if not data.empty:
-            data.attrs['symbol'] = ticker.upper()
+        if not data.empty: data.attrs['symbol'] = ticker.upper()
         return data
     except Exception:
         df.attrs['error'] = 'Data Error'
         return df
 
 def get_news_for_tickers(tickers: list[str]) -> list[dict] | None:
-    """
-    Fetches and aggregates news for a list of tickers, then sorts by date.
-    This function calls get_news_data for each ticker and combines the results.
-    """
-    all_news = []
+    all_news, seen_urls = [], set()
     for ticker in tickers:
-        # get_news_data handles caching and validation for individual tickers.
         news_items = get_news_data(ticker)
         if news_items:
-            all_news.extend(news_items)
-
-    if not all_news:
-        return None if len(tickers) > 0 else []
-
-    # Sort all collected news items by the datetime object, newest first.
+            for item in news_items:
+                if (link := item.get('link')) and link not in seen_urls:
+                    all_news.append(item)
+                    seen_urls.add(link)
+    if not all_news: return None if len(tickers) > 0 else []
     all_news.sort(key=lambda x: x['publish_datetime_utc'], reverse=True)
     return all_news
 
 def get_news_data(ticker: str) -> list[dict] | None:
-    """
-    Fetches and processes news articles for a single ticker symbol, with caching.
-    Each returned news item is tagged with its source ticker and a raw datetime object.
-    """
     if not ticker: return []
     normalized_ticker = ticker.upper()
     now = datetime.now(timezone.utc)
     if normalized_ticker in _news_cache:
         timestamp, cached_data = _news_cache[normalized_ticker]
-        if (now - timestamp).total_seconds() < CACHE_CLOSED_MARKET_SECONDS:
+        if (now - timestamp).total_seconds() < NEWS_CACHE_DURATION_SECONDS:
             return cached_data
-
     info = get_ticker_info(ticker)
     if not info: return None
-
     raw_news = yf.Ticker(normalized_ticker).news
     if not raw_news: return []
-
     processed_news = []
     for item in raw_news:
         content = item.get('content', {})
         if not content: continue
-
         publish_time_utc = None
         publish_time_str = "N/A"
         if pub_date_str := content.get('pubDate'):
             try:
-                # Store the raw datetime object for accurate sorting
                 publish_time_utc = datetime.fromisoformat(pub_date_str.replace('Z', '+00:00'))
                 publish_time_str = publish_time_utc.astimezone().strftime('%Y-%m-%d %H:%M %Z')
-            except (ValueError, TypeError):
-                publish_time_str = pub_date_str
-
-        processed_news.append({
-            'source_ticker': normalized_ticker, # Tag the news with its source
-            'title': content.get('title', 'N/A'),
-            'summary': content.get('summary', 'N/A'),
-            'publisher': content.get('provider', {}).get('displayName', 'N/A'),
-            'link': content.get('canonicalUrl', {}).get('url', '#'),
-            'publish_time': publish_time_str,
-            'publish_datetime_utc': publish_time_utc, # Add raw datetime for sorting
-        })
-    
+            except (ValueError, TypeError): publish_time_str = pub_date_str
+        processed_news.append({'source_ticker': normalized_ticker, 'title': content.get('title', 'N/A'), 'summary': content.get('summary', 'N/A'), 'publisher': content.get('provider', {}).get('displayName', 'N/A'), 'link': content.get('canonicalUrl', {}).get('url', '#'), 'publish_time': publish_time_str, 'publish_datetime_utc': publish_time_utc})
     _news_cache[normalized_ticker] = (datetime.now(timezone.utc), processed_news)
     return processed_news
 
 def get_ticker_info_comparison(ticker: str) -> dict:
-    """Gets both 'fast_info' and full 'info' for a ticker for debug/comparison."""
     try:
         ticker_obj = yf.Ticker(ticker)
-        fast_info = ticker_obj.fast_info
-        slow_info = ticker_obj.info
+        fast_info, slow_info = ticker_obj.fast_info, ticker_obj.info
         if not slow_info: return {"fast": {}, "slow": {}}
         return {"fast": fast_info, "slow": slow_info}
     except Exception:
         return {"fast": {}, "slow": {}}
 
 def run_ticker_debug_test(tickers: list[str]) -> list[dict]:
-    """Tests a list of tickers for validity and measures API response latency."""
+    """
+    Tests a list of tickers for validity and measures API response latency for each.
+    """
     results = []
+    # FIX: Iterate and fetch tickers individually to measure individual latency.
     for symbol in tickers:
         start_time = time.perf_counter()
         try:
+            # Let yfinance manage its own session.
             info = yf.Ticker(symbol).info
             is_valid = info and info.get('currency') is not None
-        except Exception: info, is_valid = {}, False
+        except Exception: 
+            info, is_valid = {}, False
         latency = time.perf_counter() - start_time
         description = info.get('longName', 'N/A') if is_valid else "Could not retrieve data."
         results.append({"symbol": symbol, "is_valid": is_valid, "description": description, "latency": latency})
+    
     results.sort(key=lambda x: x['latency'], reverse=True)
     return results
 
 def run_list_debug_test(lists: dict[str, list[str]]):
-    """Measures the time it takes to fetch data for entire lists of tickers."""
+    """
+    Measures the time it takes to fetch data for entire lists of tickers.
+    This is a true network test.
+    """
     results = []
     for list_name, tickers in lists.items():
         if not tickers:
             results.append({"list_name": list_name, "latency": 0.0, "ticker_count": 0})
             continue
+        
         start_time = time.perf_counter()
-        try:
-            _ = yf.Tickers(" ".join(tickers)).info
-        except Exception: pass
+        # FIX: Use force_refresh=True to guarantee a network call. No session needed.
+        get_market_price_data(tickers, force_refresh=True)
         latency = time.perf_counter() - start_time
+        
         results.append({"list_name": list_name, "latency": latency, "ticker_count": len(tickers)})
     results.sort(key=lambda x: x['latency'], reverse=True)
     return results
 
 def run_cache_test(lists: dict[str, list[str]]) -> list[dict]:
-    """Tests the performance of reading pre-cached data for lists of tickers."""
+    """
+    Tests the performance of reading pre-cached data for lists of tickers.
+    This test relies on the cache being populated by normal app usage and
+    does not trigger network calls itself.
+    """
     results = []
-    all_tickers = list(set(ticker for L in lists.values() for ticker in L))
-    if all_tickers:
-        get_market_price_data(all_tickers)
     for list_name, tickers in lists.items():
         start_time = time.perf_counter()
-        _ = [data for ticker in tickers if (entry := _price_cache.get(ticker.upper())) and (data := entry[1])]
+        _ = [get_cached_price(ticker) for ticker in tickers]
         latency = time.perf_counter() - start_time
         results.append({"list_name": list_name, "latency": latency, "ticker_count": len(tickers)})
+    
     results.sort(key=lambda x: x['latency'], reverse=True)
     return results
 
-def is_cached(ticker: str) -> bool:
-    """Checks if a ticker's price data exists in the cache."""
-    return ticker.upper() in _price_cache
-
+def is_cached(ticker: str) -> bool: return ticker.upper() in _price_cache
 def get_cached_price(ticker: str) -> dict | None:
-    """Retrieves price data for a ticker from the cache."""
     entry = _price_cache.get(ticker.upper())
-    return entry[1] if entry else None
+    return entry.get('data') if entry else None
