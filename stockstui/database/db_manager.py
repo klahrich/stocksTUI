@@ -29,18 +29,14 @@ class DbManager:
         self.db_path = db_path
         self.conn = None
         try:
-            # Ensure the parent directory exists
             self.db_path.parent.mkdir(parents=True, exist_ok=True)
-            # Set isolation_level to None to disable the driver's automatic
-            # transaction management. This gives us full control over when a
-            # transaction starts and ends with explicit BEGIN/COMMIT calls.
             self.conn = sqlite3.connect(
                 self.db_path,
                 isolation_level=None,
                 check_same_thread=False
             )
             self._create_tables()
-            self._prune_expired_entries()  # Clean up old data on startup.
+            self._prune_expired_entries()
         except sqlite3.Error as e:
             logging.error(f"Database connection failed for '{self.db_path}': {e}")
 
@@ -51,7 +47,6 @@ class DbManager:
         try:
             cursor = self.conn.cursor()
             cursor.execute("BEGIN TRANSACTION")
-            # Stores the price cache.
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS price_cache (
                     ticker TEXT PRIMARY KEY,
@@ -59,7 +54,6 @@ class DbManager:
                     timestamp REAL NOT NULL
                 )
             """)
-            # Stores semi-permanent ticker metadata.
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS ticker_info (
                     ticker TEXT PRIMARY KEY,
@@ -75,21 +69,17 @@ class DbManager:
             self.conn.rollback()
 
     def _prune_expired_entries(self):
-        """
-        Removes entries from the persistent cache that are older than their prune expiry date.
-        """
+        """Removes entries from the persistent cache that are older than their prune expiry date."""
         if not self.conn: return
         try:
             cursor = self.conn.cursor()
             cursor.execute("BEGIN TRANSACTION")
 
-            # Prune price cache
             price_prune_ts = datetime.now(timezone.utc).timestamp() - CACHE_PRUNE_EXPIRY_SECONDS
             cursor.execute("DELETE FROM price_cache WHERE timestamp < ?", (price_prune_ts,))
             if cursor.rowcount > 0:
                 logging.info(f"Pruned {cursor.rowcount} expired entries from the price cache.")
 
-            # Prune info cache
             info_prune_ts = datetime.now(timezone.utc).timestamp() - INFO_CACHE_EXPIRY_SECONDS
             cursor.execute("DELETE FROM ticker_info WHERE timestamp < ?", (info_prune_ts,))
             if cursor.rowcount > 0:
@@ -111,9 +101,11 @@ class DbManager:
             rows = cursor.fetchall()
             for ticker, data_json, timestamp_float in rows:
                 try:
-                    ts_dt = datetime.fromtimestamp(timestamp_float, tz=timezone.utc)
-                    data = json.loads(data_json)
-                    loaded_data[ticker] = (ts_dt, data)
+                    # FIX: Load data into the standardized dictionary format, not a tuple.
+                    # The expiry is calculated from the stored timestamp.
+                    expiry_dt = datetime.fromtimestamp(timestamp_float, tz=timezone.utc)
+                    data_dict = json.loads(data_json)
+                    loaded_data[ticker] = {'expiry': expiry_dt, 'data': data_dict}
                 except (json.JSONDecodeError, ValueError, TypeError, OSError):
                     logging.warning(f"Failed to decode or parse price data for '{ticker}' from DB.")
         except sqlite3.Error as e:
@@ -142,9 +134,13 @@ class DbManager:
         """Saves the in-memory price cache to the database."""
         if not self.conn or not cache_data: return
         items_to_save = []
-        for ticker, (timestamp_dt, data) in cache_data.items():
+        for ticker, cache_entry in cache_data.items():
             try:
-                items_to_save.append((ticker, json.dumps(data), timestamp_dt.timestamp()))
+                # FIX: Unpack the new standardized dictionary format for saving.
+                data_dict = cache_entry.get('data', {})
+                expiry_dt = cache_entry.get('expiry')
+                if data_dict and expiry_dt:
+                    items_to_save.append((ticker, json.dumps(data_dict), expiry_dt.timestamp()))
             except (TypeError, ValueError, AttributeError):
                 logging.warning(f"Could not serialize price data for '{ticker}' to save.")
         if not items_to_save: return
