@@ -8,7 +8,8 @@ def format_price_data_for_table(data: list[dict], symbol_aliases: dict) -> list[
 
     This function calculates derived values like change and change percentage,
     formats numerical data into strings (e.g., price ranges), and prioritizes
-    user-defined aliases for the description.
+    user-defined aliases for the description. It also passes through the
+    `change_direction` key for UI flashing.
 
     Args:
         data: A list of dictionaries, where each dict is from the market provider.
@@ -38,6 +39,9 @@ def format_price_data_for_table(data: list[dict], symbol_aliases: dict) -> list[
         fifty_two_week_high = item.get('fifty_two_week_high')
         fifty_two_week_range_str = f"${fifty_two_week_low:,.2f} - ${fifty_two_week_high:,.2f}" if fifty_two_week_low is not None and fifty_two_week_high is not None else "N/A"
 
+        # FIX: Ensure the change_direction key is passed through to the UI layer.
+        change_direction = item.get('change_direction')
+
         rows.append((
             description,
             price,
@@ -45,7 +49,8 @@ def format_price_data_for_table(data: list[dict], symbol_aliases: dict) -> list[
             change_percent,
             day_range_str,
             fifty_two_week_range_str,
-            symbol
+            symbol,
+            change_direction
         ))
     return rows
 
@@ -184,8 +189,6 @@ def format_news_for_display(news: list[dict]) -> tuple[Union[str, Text], list[st
     text = ""
     urls = []
     for item in news:
-        # FIX: Use standard markdown for styling instead of Rich tags. This is more
-        # robust as it relies on Textual's component classes for styling.
         source_ticker = item.get('source_ticker')
         if source_ticker:
             text += f"Source: **`{source_ticker}`**\n"
