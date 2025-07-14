@@ -99,7 +99,10 @@ DataTable > Header {
   padding: 0;
   margin-top: 0;
   border: round $primary; /* Rounded border with primary color */
-  height: auto;
+  /* FIX: Use `1fr` to give the container a constrained height, allowing
+     the content to overflow and the scrollbar to appear. `auto` would
+     cause the container to grow indefinitely. */
+  height: 1fr;
   overflow-y: auto;
   width: 100%;
 }
@@ -320,9 +323,9 @@ DataTable > Header {
   height: 5; /* Input height (3) + 2*padding (1+1) */
 }
 
-/* FIX: Use the standard `$secondary` theme variable for styling. */
+/* Style the source ticker in the news view */
 Markdown .strong > .code {
-  color: $success;
+  color: $secondary;
   text-style: bold; /* Ensure it remains bold */
   background: $surface; /* Match background for seamless look */
 }
