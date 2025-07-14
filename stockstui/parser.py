@@ -34,16 +34,30 @@ def create_arg_parser() -> argparse.ArgumentParser:
     """Creates and returns the command-line argument parser for the application."""
     parser = argparse.ArgumentParser(
         description="stocksTUI: A Terminal User Interface for monitoring stock data.",
-        formatter_class=argparse.RawTextHelpFormatter # For better help text formatting
+        formatter_class=argparse.RawTextHelpFormatter,
+        # Let our custom --man flag handle detailed help
+        add_help=False
     )
 
+    # --- Standard Arguments ---
+    parser.add_argument(
+        '-h', '--help',
+        action='help',
+        default=argparse.SUPPRESS,
+        help='Show this help message and exit.'
+    )
+    parser.add_argument(
+        '--man',
+        action='store_true',
+        help="Show the full user manual and exit."
+    )
     parser.add_argument(
         '-v', '-V', '--version',
         action='version',
         version=f'%(prog)s {APP_VERSION}'
     )
 
-    # Group for selecting the initial view. They are mutually exclusive.
+    # --- View Selection Group ---
     view_group = parser.add_mutually_exclusive_group()
     view_group.add_argument(
         '--tab',
@@ -54,7 +68,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
     view_group.add_argument(
         '-H', '--history',
         nargs='?',
-        const=True, # if --history is present without a value, it's True
+        const=True,
         default=None,
         metavar='TICKER',
         help="Start on the History tab. Optionally provide a ticker."
@@ -63,8 +77,9 @@ def create_arg_parser() -> argparse.ArgumentParser:
         '-N', '--news',
         nargs='?',
         const=True,
-        metavar='TICKER',
-        help="Start on the News tab. Optionally provide a ticker."
+        default=None,
+        metavar='TICKER(S)',
+        help="Start on the News tab. Optionally provide one or more\ncomma-separated tickers (e.g., \"AAPL,MSFT\")."
     )
     view_group.add_argument(
         '--debug',
@@ -77,7 +92,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
         help="Start on the Configs tab."
     )
     
-    # Argument for creating temporary, session-only lists
+    # --- Other Options ---
     parser.add_argument(
         '--session-list',
         nargs='+',
@@ -89,7 +104,6 @@ Example: --session-list stocks=AAPL,MSFT crypto=BTC-USD
 Can be specified multiple times."""
     )
 
-    # Arguments specific to the History view
     history_group = parser.add_argument_group('History View Options')
     history_group.add_argument(
         '--period',
