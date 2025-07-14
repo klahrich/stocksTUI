@@ -1,120 +1,146 @@
 # stocksTUI
 
-A Terminal User Interface for monitoring stock prices, news, and historical data, built with [Textual](https://github.com/textualize/textual). Information is fetched using the [yfinance](https://github.com/ranaroussi/yfinance) API.
+A fast, minimalist terminal app for checking stock prices, crypto, news, and historical charts — without leaving your shell. Built with [Textual](https://github.com/textualize/textual), powered by [yfinance](https://github.com/ranaroussi/yfinance), and made for people who prefer the command line over CNBC.
 
 ![stocksTUI Screenshot](https://raw.githubusercontent.com/andriy-git/stocksTUI/main/assets/screenshot.png)
 
-## Features
+---
 
--   📈 **Real-Time(ish) Price Data** – Because latency is still better than CNBC ads.
--   🧮 **Custom Watchlists** – Sort your tech bros from your energy overlords.
--   📊 **Historical Charts** – Plots your portfolio’s regrets with style.
--   📰 **Ticker News** – Stay smarter than the talking heads.
--   🎨 **Theming** – Dark mode? Light mode? You've got taste, and now you’ve got options.
--   ⚙️ **Configurable Everything** – Refresh rate, default views, and more are all tweakable from the config screen.
+## ✨ Features
 
-**Note:** All ticker symbols must be in the format used by [Yahoo Finance](https://finance.yahoo.com/) (e.g., `AAPL` for Apple, `^GSPC` for S&P 500, `BTC-USD` for Bitcoin).
+* **Live-ish Price Data**
+  Watch your favorite tickers update in near real-time with configurable refresh intervals.
 
-## Requirements
+* **Watchlists That Make Sense**
+  Organize your assets into lists like "Tech", "Crypto", "Dividend Traps", or "Memes". Manage them entirely from the UI — no need to touch JSON unless you want to.
 
--   **Python:** 3.9 or newer.
--   **Operating System:**
-    -   **Linux / macOS:** Fully supported.
-    -   **Windows:** Requires **Windows Terminal** with PowerShell, or **WSL2**. The application will *not* work correctly in the legacy `cmd.exe` console due to its reliance on advanced terminal features.
+* **Charts & Tables, Your Way**
+  View historical performance from `1D` to `Max`, switch between a detailed table or a candlestick chart. Zoom in, scroll, analyze.
 
-## Installation
+* **News That Matters**
+  See the latest headlines per ticker or a combined feed — no ads, no autoplay videos, just info.
 
-The recommended way to install stocksTUI is with `pipx`. This installs the application and its dependencies in an isolated environment, ensuring that it does not conflict with any other Python packages on your system.
+* **Keyboard-Friendly, Mouse-Optional**
+  Navigate everything with Vim-style keys or arrow keys. Bonus: lots of helpful keybindings, fully documented.
 
-#### 1. Install `pipx`
+* **Custom Themes & Settings**
+  Tweak the look and feel with built-in themes or your own. Set your default tab, hide unused ones, and make it feel like *your* dashboard.
 
-If you don't have `pipx` installed, you can install it with your system's package manager or with `pip`.
+* **Smart Caching**
+  The app remembers what it can. Market-aware caching keeps startup fast and avoids pointless API calls on weekends or holidays.
+
+> ⚠️ Note: All symbols follow [Yahoo Finance](https://finance.yahoo.com/) format — e.g., `AAPL` for Apple, `^GSPC` for S\&P 500, and `BTC-USD` for Bitcoin.
+
+---
+
+## 🛠 Requirements
+
+* **Python** 3.9 or newer
+* **OS Support:**
+
+  * **Linux / macOS** — Fully supported
+  * **Windows** — Use **Windows Terminal** or **WSL2**. It *won’t* work in the old `cmd.exe`.
+
+---
+
+## 🚀 Installation
+
+The easiest way to install is with [`pipx`](https://pypa.github.io/pipx/):
+
+### 1. Install pipx (if you don’t already have it):
 
 ```bash
-# On Debian/Ubuntu
+# Debian/Ubuntu
 sudo apt install pipx
 
-# On Arch Linux
+# Arch Linux
 sudo pacman -S python-pipx
 
-# On macOS
+# macOS
 brew install pipx
 
-# Or, using pip (ensure ~/.local/bin is in your PATH)
+# Or fallback to pip
 python3 -m pip install --user pipx
 python3 -m pipx ensurepath
 ```
 
-#### 2. Install stocksTUI
-
-Once `pipx` is installed, you can install stocksTUI with a single command:
+### 2. Install stocksTUI:
 
 ```bash
 pipx install stocksTUI
 ```
 
-## Usage
+Done. You can now run `stockstui` from anywhere.
 
-To run the application, simply execute the following command in your terminal:
+---
+
+## 🧭 Usage
+
+Run the app like so:
 
 ```bash
 stockstui
 ```
 
-## Keybindings
+Need help?
 
-| Key             | Action                        | Context      |
-| --------------- | ----------------------------- | ------------ |
-| `q`             | Quit the application          | Global       |
-| `r`             | Refresh current view          | Global       |
-| `R` (`Shift+R`) | Refresh all lists in background | Global       |
-| `s`             | Enter Sort Mode               | Price/History |
-| `?`             | Toggle Help Screen            | Global       |
-| `/`             | Search in current table       | Tables       |
-| `1-0`           | Switch to corresponding tab   | Global       |
-| `h, j, k, l`    | Navigate / Scroll             | All          |
-| `Up, Down`      | Navigate / Scroll             | All          |
-| `Left, Right`   | Navigate                      | All          |
-| `Tab, Shift+Tab`| Focus next/previous widget    | Global       |
-| `Enter`         | Select / Action               | All          |
-| `Esc`           | Close dialog/search, exit sort mode, or focus tabs | Global |
+```bash
+stockstui -h          # Short help  
+stockstui --man       # Full user manual  
+```
 
-In Sort Mode (after pressing `s`):
+---
 
-| Key | Action               | Context       |
-| --- | -------------------- | ------------- |
-| `d` | Sort by Description/Date | Price/History |
-| `p` | Sort by Price        | Price         |
-| `c` | Sort by Change/Close | Price/History |
-| `e` | Sort by % Change     | Price         |
-| `t` | Sort by Ticker       | Price         |
-| `u` | Undo Sort            | Price         |
-| `H` | Sort by High         | History       |
-| `L` | Sort by Low          | History       |
-| `v` | Sort by Volume       | History       |
+### 💡 Command-Line Examples
 
-## For Developers: Installing from Source
+```bash
+stockstui --history TSLA
+```
 
-If you want to run the latest code or contribute to development, you can install from the source repository.
+Open on Tesla's History tab.
 
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/andriy-git/stocksTUI.git
-    cd stocksTUI
-    ```
+```bash
+stockstui --news "NVDA,AMD"
+```
 
-2.  **Run the installation script:**
-    This script will create a virtual environment, install all dependencies in editable mode, and create a symlink for the `stockstui` command.
-    ```bash
-    ./install.sh
-    ```
+Get combined news for NVIDIA and AMD.
 
-3.  **Run the application:**
-    You can now run the application from anywhere.
-    ```bash
-    stockstui
-    ```
+```bash
+stockstui --session-list "EV Stocks=TSLA,RIVN,LCID"
+```
 
-## License
+Create a temporary watchlist for this session only.
 
-This project is licensed under the GNU General Public License v3.0. See the `LICENSE` file for details.
+```bash
+stockstui --history TSLA --period 5d --chart
+```
+
+Launch a 5-day candlestick chart for Tesla.
+
+---
+
+## ⌨️ Keybindings
+
+* Press `?` inside the app for a quick keybinding cheat sheet
+* Run `stockstui --man` for the full breakdown
+
+---
+
+## 🧑‍💻 For Developers: Install from Source
+
+Want to try the bleeding-edge version or contribute?
+
+```bash
+git clone https://github.com/andriy-git/stocksTUI.git
+cd stocksTUI
+./install.sh
+```
+
+This sets up a virtual environment and a global `stockstui` command so you can test and develop from anywhere.
+
+---
+
+## ⚖️ License
+
+Licensed under the **GNU GPL v3.0**.
+See `LICENSE` for the legalese.
