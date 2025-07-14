@@ -48,7 +48,7 @@ class DebugView(Vertical):
                     
                     self.app.run_info_comparison_test(ticker)
                 else: 
-                    # FIX: User cancelled the modal, so re-enable buttons and restore initial state.
+                    # User cancelled the modal, so re-enable buttons and restore initial state.
                     await container.mount(Static("[dim]Run a test to see results.[/dim]", id="info-message"))
                     for button in self.query(".debug-buttons Button"):
                         button.disabled = False
@@ -71,6 +71,7 @@ class DebugView(Vertical):
                 dt.add_columns("List Name", "Tickers", "Latency")
                 dt.add_row("[yellow]Running list batch network test...[/]")
                 lists_to_test = {name: [s['ticker'] for s in tickers] for name, tickers in self.app.config.lists.items()}
+                # FIX: Call the correct test function for network latency.
                 self.app.run_list_debug_test(lists_to_test)
             elif button_id == "debug-test-cache":
                 dt.add_columns("List Name", "Tickers", "Latency (From Cache)")
