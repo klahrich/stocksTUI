@@ -1,5 +1,6 @@
 # Change Log
-## [unreleased]
+
+## [0.1.0-b3] 2025-07-14
 
 ### Added
 -   `feat(cli)`: Added a `--man` flag to display a detailed, man-page-style user guide.
