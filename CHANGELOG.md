@@ -1,27 +1,41 @@
 # Change Log
-
-## [unreleased] 
+## [unreleased]
 
 ### Added
--   `feat(news)`: Added support for viewing a combined news feed for multiple tickers, sorted by publication time.
--   `feat(cache)`: Implemented a persistent SQLite cache (`app_cache.db`) for price and ticker metadata, significantly improving application startup times.
--   `feat(cache)`: Added intelligent cache expiration based on market status (open/closed) to optimize API usage and data freshness.
--   `feat(cli)`: Implemented command-line argument parsing, allowing the app to be launched into specific views (e.g., `stockstui --history AAPL`) and with temporary session-based watchlists.
--   `feat(logs)`: Implemented in-app notifications for `WARNING` and `ERROR` log messages, providing real-time user feedback.
--   `feat(logs)`: Added a file logger (`stockstui.log`) to capture detailed debug information.
+-   `feat(cli)`: Added a `--man` flag to display a detailed, man-page-style user guide.
+-   `feat(debug)`: Debug test isolation for accurate measurements
+-   `feat(ux)`: Smart refresh system (`r` vs `R` keybindings)
+-   `feat(news)`: Added support for viewing a combined news feed for multiple tickers, sorted by publication time
+-   `feat(cache)`: Implemented persistent SQLite cache (`app_cache.db`) for price/ticker metadata
+-   `feat(cache)`: Added market-aware cache expiration to optimize API usage
+-   `feat(cli)`: Implemented CLI argument parsing for launching into specific views
+-   `feat(logs)`: Added in-app notifications for WARNING/ERROR log messages
+-   `feat(logs)`: Added file logger (`stockstui.log`) for debug information
 
 ### Changed
--   `refactor(provider)`: Overhauled the data fetching pipeline to be more efficient and robust, eliminating silent failures.
--   `refactor(cli)`: Dynamically load the app version from package metadata instead of hard-coding it.
--   `refactor(cache)`: Converted all caching logic to use timezone-aware UTC datetimes for improved accuracy.
+-  `refactor(ux)`: Simplified price comparison data handling to update after table population
+-   `refactor(ux)`: Improved price change flash by moving direction logic to formatter.py for accurate comparison
+-   `refactor(provider)`: Overhauled data fetching pipeline for efficiency
+-   `refactor(cli)`: Dynamically load app version from package metadata
+-   `refactor(cache)`: Converted caching to timezone-aware UTC datetimes
+-   `refactor(config)`: Relocated config/cache files to OS-appropriate directories
+-   `refactor(cli)`: Enhanced `--news` to support multiple comma-separated tickers
 
 ### Fixed
--   `fix(core)`: Improved application stability by correcting database transaction handling and logging thread-safety.
--   `fix(core)`: Ensured configuration files save atomically on all platforms by using `os.replace`.
--   `fix(ux)`: Ensured data is always refreshed on tab switch and that the "Last Refresh" timestamp is accurate.
--   `fix(ui)`: Correctly styled the source ticker in the multi-news view using standard Markdown and CSS.
--   `fix(news)`: Hardened the link-parsing regex to prevent errors with special characters.
--   `fix(debug)`: Ensured test buttons in the debug view are correctly re-enabled after a modal is cancelled.
+-   `fix(cache)`: Standardized cache structure to prevent TypeErrors
+-   `fix(provider)`: Prioritized `fast_info` for real-time data accuracy
+-   `fix(core)`: Improved stability with better DB transaction handling
+-   `fix(core)`: Ensured atomic config saves using `os.replace`
+-   `fix(ux)`: Guaranteed data refresh on tab switch with accurate timestamps
+-   `fix(ui)`: Corrected source ticker styling in multi-news view
+-   `fix(news)`: Hardened link-parsing regex against special characters
+-   `fix(debug)`: Fixed test button re-enabling after modal cancellation
+-   `fix(history)`: Added CLI argument handling for `--chart` and `--period`
+-   `fix(css)`: Fixed scrollbar in config visible tabs container
+-   `fix(logs)`: Implemented thread-safe logging
+
+### Docs
+-   `docs`: README and manual overhaul
 
 ## [0.1.0-b2] - 2025-07-11
 

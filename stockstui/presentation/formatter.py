@@ -2,18 +2,17 @@ from typing import Union
 from rich.text import Text
 import pandas as pd
 
-def format_price_data_for_table(data: list[dict], symbol_aliases: dict) -> list[tuple]:
+def format_price_data_for_table(data: list[dict], old_prices: dict) -> list[tuple]:
     """
     Formats raw price data for display in the main DataTable.
 
     This function calculates derived values like change and change percentage,
-    formats numerical data into strings (e.g., price ranges), and prioritizes
-    user-defined aliases for the description. It also passes through the
-    `change_direction` key for UI flashing.
+    determines the direction of price change for UI flashing, and formats
+    numerical data into strings.
 
     Args:
         data: A list of dictionaries, where each dict is from the market provider.
-        symbol_aliases: A mapping of ticker symbols to user-defined names.
+        old_prices: A dict mapping tickers to their previously known prices.
 
     Returns:
         A list of tuples, where each tuple represents a row for the DataTable.
@@ -21,15 +20,22 @@ def format_price_data_for_table(data: list[dict], symbol_aliases: dict) -> list[
     rows = []
     for item in data:
         symbol = item.get('symbol', 'N/A')
-        # Prioritize alias, fall back to longName from data provider.
-        description = symbol_aliases.get(symbol) or item.get('description', 'N/A')
+        description = item.get('description', 'N/A')
         price = item.get('price')
         previous_close = item.get('previous_close')
-
-        change, change_percent = None, None
+        
+        change, change_percent, change_direction = None, None, None
         if price is not None and previous_close is not None and previous_close != 0:
             change = price - previous_close
             change_percent = change / previous_close
+
+        # Determine change direction for flashing based on the *old* price
+        old_price = old_prices.get(symbol)
+        if old_price is not None and price is not None:
+            if round(price, 2) > round(old_price, 2):
+                change_direction = 'up'
+            elif round(price, 2) < round(old_price, 2):
+                change_direction = 'down'
 
         day_low = item.get('day_low')
         day_high = item.get('day_high')
@@ -38,9 +44,6 @@ def format_price_data_for_table(data: list[dict], symbol_aliases: dict) -> list[
         fifty_two_week_low = item.get('fifty_two_week_low')
         fifty_two_week_high = item.get('fifty_two_week_high')
         fifty_two_week_range_str = f"${fifty_two_week_low:,.2f} - ${fifty_two_week_high:,.2f}" if fifty_two_week_low is not None and fifty_two_week_high is not None else "N/A"
-
-        # FIX: Ensure the change_direction key is passed through to the UI layer.
-        change_direction = item.get('change_direction')
 
         rows.append((
             description,

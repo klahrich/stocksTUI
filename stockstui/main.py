@@ -488,15 +488,10 @@ class StocksTUI(App):
             if symbols:
                 try:
                     price_table = self.query_one("#price-table", DataTable)
-                    # Before fetching, store the current prices for comparison.
-                    self._price_comparison_data = {
-                        row_key.value: float(extract_cell_text(price_table.get_cell(row_key.value, "Price")).replace("$","").replace(",",""))
-                        for row_key in price_table.rows if price_table.get_cell(row_key.value, "Price") != "N/A"
-                    }
                     if force and price_table.row_count == 0:
                         price_table.loading = True
-                except (NoMatches, ValueError, TypeError):
-                    self._price_comparison_data = {}
+                except NoMatches:
+                    pass
                 self.fetch_prices(symbols, force=force, category=category)
 
     def action_toggle_help(self) -> None:
@@ -604,7 +599,9 @@ class StocksTUI(App):
                 cached_data = [price for s in symbols if (price := market_provider.get_cached_price(s))]
                 if cached_data:
                     alias_map = self._get_alias_map()
-                    rows = formatter.format_price_data_for_table(cached_data, alias_map)
+                    # Populate comparison data before initial display
+                    self._price_comparison_data = {item.get('symbol'): item.get('price') for item in cached_data if item.get('price') is not None}
+                    rows = formatter.format_price_data_for_table(cached_data, self._price_comparison_data)
                     self._style_and_populate_price_table(price_table, rows)
                     self._apply_price_table_sort()
                 elif not symbols:
@@ -694,6 +691,7 @@ class StocksTUI(App):
         muted_color = self.theme_variables.get("text-muted", "dim")
 
         for row_data in rows:
+            # FIX: Unpack all 8 values from the formatter's tuple.
             desc, price, change, change_percent, day_range, week_range, symbol, change_direction = row_data
             
             if desc == 'Invalid Ticker':
@@ -724,6 +722,7 @@ class StocksTUI(App):
             ticker_text = Text(symbol, style=muted_color)
             price_table.add_row(desc_text, price_text, change_text, change_percent_text, day_range_text, week_range_text, ticker_text, key=symbol)
             
+            # FIX: Flash the correct "Change" and "% Change" columns.
             if change_direction == 'up':
                 self.flash_cell(symbol, "Change", "positive")
                 self.flash_cell(symbol, "% Change", "positive")
@@ -750,22 +749,6 @@ class StocksTUI(App):
             dt.loading = False
             dt.clear()
             
-            # --- FIX: Compare new data with old, and tag it for the UI ---
-            new_comparison_data = {}
-            for item in message.data:
-                symbol = item['symbol']
-                new_price = item.get('price')
-                old_price = self._price_comparison_data.get(symbol)
-
-                if old_price is not None and new_price is not None:
-                    if round(new_price, 2) > round(old_price, 2):
-                        item['change_direction'] = 'up'
-                    elif round(new_price, 2) < round(old_price, 2):
-                        item['change_direction'] = 'down'
-                
-                if new_price is not None:
-                    new_comparison_data[symbol] = new_price
-
             symbols_on_screen = {s['ticker'] for lst in self.config.lists.values() for s in lst} if active_category == 'all' else {s['ticker'] for s in self.config.lists.get(active_category, [])}
             data_for_table = [item for item in message.data if item['symbol'] in symbols_on_screen]
 
@@ -774,11 +757,16 @@ class StocksTUI(App):
                  return
 
             alias_map = self._get_alias_map()
-            rows = formatter.format_price_data_for_table(data_for_table, alias_map)
+            rows = formatter.format_price_data_for_table(data_for_table, self._price_comparison_data)
+            
             self._style_and_populate_price_table(dt, rows)
             
-            # Update the comparison data state for the next refresh cycle.
-            self._price_comparison_data = new_comparison_data
+            # After populating, update the comparison data with the new prices for the next cycle.
+            self._price_comparison_data = {
+                item['symbol']: item.get('price')
+                for item in data_for_table
+                if item.get('price') is not None
+            }
             
             self._apply_price_table_sort()
             self.query_one("#last-refresh-time").update(now_str)
