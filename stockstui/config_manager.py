@@ -40,7 +40,6 @@ class ConfigManager:
         self.settings: dict = self._load_or_create('settings.json')
         self.lists: dict = self._load_or_create('lists.json')
         self.themes: dict = self._load_or_create('themes.json')
-        self.descriptions: dict = self._load_or_create('descriptions.json')
 
     def _load_or_create(self, filename: str) -> dict:
         """
@@ -49,16 +48,6 @@ class ConfigManager:
         """
         user_path = self.user_config_dir / filename
         default_path = self.default_dir / filename
-
-        if filename == 'descriptions.json':
-            if not user_path.exists():
-                return {}
-            try:
-                with open(user_path, 'r') as f:
-                    content = f.read()
-                    return json.loads(content) if content.strip() else {}
-            except (json.JSONDecodeError, IOError):
-                return {}
 
         data = None
         if user_path.exists():
@@ -117,22 +106,3 @@ class ConfigManager:
 
     def save_lists(self):
         self._atomic_save('lists.json', self.lists)
-
-    def save_descriptions(self):
-        self._atomic_save('descriptions.json', self.descriptions)
-
-    def get_description(self, ticker: str) -> str | None:
-        entry = self.descriptions.get(ticker)
-        if not entry:
-            return None
-        
-        timestamp = entry.get('timestamp', 0)
-        if time.time() - timestamp > 604800:
-            return None
-
-        return entry.get('longName')
-
-    def update_descriptions(self, new_data: dict[str, str]):
-        for ticker, long_name in new_data.items():
-            self.descriptions[ticker] = {"longName": long_name, "timestamp": time.time()}
-        self.save_descriptions()
