@@ -21,6 +21,7 @@ from textual.theme import Theme
 from textual.widgets import (Button, Checkbox, DataTable, Footer,
                              Input, Label, ListView, ListItem,
                              Select, Static, Tab, Tabs, Markdown, Switch, RadioButton)
+from textual.widget import Widget
 from textual import on, work
 from rich.text import Text
 from rich.style import Style
@@ -386,18 +387,13 @@ class StocksTUI(App):
         
         default_cat_value = self.config.get_setting("default_tab_category", "all")
         
-        # FIX: Get a list of the actual values ('all', 'stocks', etc.) for validation.
         valid_option_values = [opt[1] for opt in options]
         
         if default_cat_value in valid_option_values:
-            # The configured value is valid, so use it.
             default_tab_select.value = default_cat_value
         elif options:
-            # The configured value is invalid, but other options exist.
-            # Fall back to setting the value to the first available option.
             default_tab_select.value = options[0][1]
         else:
-            # No options are available at all.
             default_tab_select.clear()
         
         vis_container = config_view.query_one("#visible-tabs-container")
@@ -518,16 +514,6 @@ class StocksTUI(App):
         If the widget doesn't support cursor movement, it falls back to scrolling
         the main content area.
         """
-        category = self.get_active_category()
-        # In news view, up/down/j/k should always scroll the content.
-        if category == 'news' and direction in ('up', 'down'):
-            if (scrollable := self._get_active_scrollable_widget()):
-                if direction == "up":
-                    scrollable.scroll_up(duration=0.5)
-                else:
-                    scrollable.scroll_down(duration=0.5)
-                return
-
         # Priority 1: Main Tabs navigation
         if self.focused and isinstance(self.focused, Tabs):
             if direction == 'left': self.focused.action_previous_tab()
@@ -544,22 +530,56 @@ class StocksTUI(App):
             if (scrollable := self._get_active_scrollable_widget()):
                 if direction == "up": scrollable.scroll_up(duration=0.5)
                 else: scrollable.scroll_down(duration=0.5)
+
+    def _get_primary_view_widget(self) -> Widget | None:
+        """
+        Gets the primary *focusable* widget for the currently active view.
+        This centralizes the logic for finding the main interactive widget for a view.
+        """
+        category = self.get_active_category()
+        target_id = None
+        
+        if category == 'history':
+            target_id = '#history-ticker-input'
+        elif category == 'news':
+            target_id = '#news-ticker-input'
+        elif category == 'configs':
+            target_id = '#symbol-list-view'
+        elif category == 'debug':
+            target_id = '#debug-table'
+        elif category and category not in ['history', 'news', 'configs', 'debug']: # Price views
+            target_id = '#price-table'
+
+        if target_id:
+            try:
+                return self.query_one(target_id)
+            except NoMatches:
+                pass
+        return None
     
     def _get_active_scrollable_widget(self) -> Container | None:
         """
         Determines the currently visible main container that should be scrolled
-        by the fallback `move_cursor` logic.
+        by the fallback `move_cursor` logic. This is now tied to the primary widget.
         """
-        config_container = self.query_one("#config-container")
-        if config_container.display: return config_container
-        output_container = self.query_one("#output-container")
-        if output_container.display:
-            try: return output_container.query_one("#news-output-display")
-            except NoMatches: pass
-            try: return output_container.query_one("#history-display-container")
-            except NoMatches: pass
+        primary_widget = self._get_primary_view_widget()
+        if not primary_widget:
+            return None
+
+        # Determine the scrollable container based on the primary widget's view
+        category = self.get_active_category()
+        if category == 'configs':
+            return self.query_one("#config-container")
+        
+        # For all other views, the scrollable area is within #output-container
+        output_container = self.query_one('#output-container')
+        
+        if category == 'news':
+            return output_container.query_one('#news-output-display')
+        elif category == 'history':
+            return output_container.query_one('#history-display-container')
+        else: # Default for price, debug, etc.
             return output_container
-        return None
     #endregion
 
     #region Data Flow
@@ -699,7 +719,6 @@ class StocksTUI(App):
         muted_color = self.theme_variables.get("text-muted", "dim")
 
         for row_data in rows:
-            # FIX: Unpack all 8 values from the formatter's tuple.
             desc, price, change, change_percent, day_range, week_range, symbol, change_direction = row_data
             
             if desc == 'Invalid Ticker':
@@ -730,7 +749,6 @@ class StocksTUI(App):
             ticker_text = Text(symbol, style=muted_color)
             price_table.add_row(desc_text, price_text, change_text, change_percent_text, day_range_text, week_range_text, ticker_text, key=symbol)
             
-            # FIX: Flash the correct "Change" and "% Change" columns.
             if change_direction == 'up':
                 self.flash_cell(symbol, "Change", "positive")
                 self.flash_cell(symbol, "% Change", "positive")
@@ -965,8 +983,6 @@ class StocksTUI(App):
         try:
             dt = self.query_one("#price-table", DataTable)
             dt.update_cell(row_key, column_key, original_content, update_width=False)
-        # FIX: Catch CellDoesNotExist, which can occur if the table is rebuilt
-        # (e.g., by switching tabs) before the timer callback fires.
         except (KeyError, NoMatches, DataTable.CellDoesNotExist):
             pass
     #endregion
@@ -975,7 +991,6 @@ class StocksTUI(App):
     @on(Tabs.TabActivated)
     async def on_tabs_tab_activated(self, event: Tabs.TabActivated):
         """Handles tab switching. Resets sort state and displays new content."""
-        # FIX: Dismiss the search box if it's active when the user switches tabs.
         try:
             self.query_one(SearchBox).remove()
             self._original_table_data = [] # Clear the backup data as well.
@@ -1083,18 +1098,9 @@ class StocksTUI(App):
         except NoMatches: pass
 
     def action_focus_input(self) -> None:
-        """Focus the primary input widget of the current view (e.g., ticker input)."""
-        category = self.get_active_category()
-        target_widget = None
-        try:
-            if category == 'history': target_widget = self.query_one('#history-ticker-input')
-            elif category == 'news': target_widget = self.query_one('#news-ticker-input')
-            elif category == 'configs': target_widget = self.query_one('#symbol-list-view')
-            elif category == 'debug': target_widget = self.query_one('#debug-table')
-            elif category and category not in ['configs', 'history', 'news', 'debug']:
-                target_widget = self.query_one('#price-table')
-        except NoMatches: pass
-        if target_widget: target_widget.focus()
+        """Focus the primary input widget of the current view using the new helper method."""
+        if (target_widget := self._get_primary_view_widget()):
+            target_widget.focus()
 
     async def action_handle_sort_key(self, key: str) -> None:
         """Handles a key press while in sort mode to apply a specific sort."""

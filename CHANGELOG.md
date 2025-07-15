@@ -13,7 +13,7 @@
 -   `feat(logs)`: Added file logger (`stockstui.log`) for debug information
 
 ### Changed
--  `refactor(ux)`: Simplified price comparison data handling to update after table population
+-   `refactor(ux)`: Simplified price comparison data handling to update after table population
 -   `refactor(ux)`: Improved price change flash by moving direction logic to formatter.py for accurate comparison
 -   `refactor(provider)`: Overhauled data fetching pipeline for efficiency
 -   `refactor(cli)`: Dynamically load app version from package metadata
@@ -22,6 +22,11 @@
 -   `refactor(cli)`: Enhanced `--news` to support multiple comma-separated tickers
 
 ### Fixed
+-   `fix(ui)`: Prevented crash when switching tabs during price cell flash animation
+-   `fix(ui)`: Ensured search box is dismissed when switching tabs, preventing it from lingering
+-   `fix(ui)`: Fixed invalid state in "Default Tab" dropdown when the configured default tab is deleted
+-   `fix(cache)`: Ensured live price updates are saved to session cache, maintaining consistent prices when switching tabs
+-   `fix(formatter)`: Restored user-defined aliases in the price table, prioritizing custom names over default descriptions
 -   `fix(cache)`: Standardized cache structure to prevent TypeErrors
 -   `fix(provider)`: Prioritized `fast_info` for real-time data accuracy
 -   `fix(core)`: Improved stability with better DB transaction handling
