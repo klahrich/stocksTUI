@@ -383,13 +383,21 @@ class StocksTUI(App):
         default_tab_select = config_view.query_one("#default-tab-select", Select)
         options = [(t['name'], t['category']) for t in self.tab_map if t['category'] not in ['configs', 'history', 'news', 'debug']]
         default_tab_select.set_options(options)
+        
         default_cat_value = self.config.get_setting("default_tab_category", "all")
+        
+        # FIX: Get a list of the actual values ('all', 'stocks', etc.) for validation.
         valid_option_values = [opt[1] for opt in options]
+        
         if default_cat_value in valid_option_values:
+            # The configured value is valid, so use it.
             default_tab_select.value = default_cat_value
         elif options:
+            # The configured value is invalid, but other options exist.
+            # Fall back to setting the value to the first available option.
             default_tab_select.value = options[0][1]
         else:
+            # No options are available at all.
             default_tab_select.clear()
         
         vis_container = config_view.query_one("#visible-tabs-container")
@@ -601,7 +609,7 @@ class StocksTUI(App):
                     alias_map = self._get_alias_map()
                     # Populate comparison data before initial display
                     self._price_comparison_data = {item.get('symbol'): item.get('price') for item in cached_data if item.get('price') is not None}
-                    rows = formatter.format_price_data_for_table(cached_data, self._price_comparison_data)
+                    rows = formatter.format_price_data_for_table(cached_data, self._price_comparison_data, alias_map)
                     self._style_and_populate_price_table(price_table, rows)
                     self._apply_price_table_sort()
                 elif not symbols:
@@ -757,7 +765,7 @@ class StocksTUI(App):
                  return
 
             alias_map = self._get_alias_map()
-            rows = formatter.format_price_data_for_table(data_for_table, self._price_comparison_data)
+            rows = formatter.format_price_data_for_table(data_for_table, self._price_comparison_data, alias_map)
             
             self._style_and_populate_price_table(dt, rows)
             
@@ -957,7 +965,9 @@ class StocksTUI(App):
         try:
             dt = self.query_one("#price-table", DataTable)
             dt.update_cell(row_key, column_key, original_content, update_width=False)
-        except (KeyError, NoMatches):
+        # FIX: Catch CellDoesNotExist, which can occur if the table is rebuilt
+        # (e.g., by switching tabs) before the timer callback fires.
+        except (KeyError, NoMatches, DataTable.CellDoesNotExist):
             pass
     #endregion
 
@@ -965,6 +975,13 @@ class StocksTUI(App):
     @on(Tabs.TabActivated)
     async def on_tabs_tab_activated(self, event: Tabs.TabActivated):
         """Handles tab switching. Resets sort state and displays new content."""
+        # FIX: Dismiss the search box if it's active when the user switches tabs.
+        try:
+            self.query_one(SearchBox).remove()
+            self._original_table_data = [] # Clear the backup data as well.
+        except NoMatches:
+            pass
+
         self._sort_column_key = None; self._sort_reverse = False
         self._history_sort_column_key = None; self._history_sort_reverse = False
         
