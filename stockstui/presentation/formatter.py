@@ -2,17 +2,19 @@ from typing import Union
 from rich.text import Text
 import pandas as pd
 
-def format_price_data_for_table(data: list[dict], old_prices: dict) -> list[tuple]:
+def format_price_data_for_table(data: list[dict], old_prices: dict, alias_map: dict[str, str]) -> list[tuple]:
     """
     Formats raw price data for display in the main DataTable.
 
     This function calculates derived values like change and change percentage,
     determines the direction of price change for UI flashing, and formats
-    numerical data into strings.
+    numerical data into strings. It prioritizes user-defined aliases for the
+    description column.
 
     Args:
         data: A list of dictionaries, where each dict is from the market provider.
         old_prices: A dict mapping tickers to their previously known prices.
+        alias_map: A dict mapping tickers to their user-defined aliases.
 
     Returns:
         A list of tuples, where each tuple represents a row for the DataTable.
@@ -20,7 +22,8 @@ def format_price_data_for_table(data: list[dict], old_prices: dict) -> list[tupl
     rows = []
     for item in data:
         symbol = item.get('symbol', 'N/A')
-        description = item.get('description', 'N/A')
+        # Prioritize the user-defined alias, fall back to the long name from the provider.
+        description = alias_map.get(symbol, item.get('description', 'N/A'))
         price = item.get('price')
         previous_close = item.get('previous_close')
         
