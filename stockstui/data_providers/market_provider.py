@@ -79,13 +79,19 @@ def get_market_price_data(tickers: list[str], force_refresh: bool = False) -> li
     
     live_prices = _fetch_fast_data(fast_data_to_fetch) if fast_data_to_fetch else {}
         
+    # FIX: Merge the freshly fetched fast data (live prices) back into the
+    # main in-memory cache. This ensures the cache is the single source of
+    # truth for the session and data is not lost when switching tabs.
+    if live_prices:
+        for ticker, fast_data_update in live_prices.items():
+            if ticker in _price_cache and 'data' in _price_cache[ticker]:
+                _price_cache[ticker]['data'].update(fast_data_update)
+
+    # Now that the cache is updated, construct the final list from it.
     final_data = []
     for ticker in valid_tickers:
         if ticker in _price_cache:
-            merged_item = _price_cache[ticker].get('data', {}).copy()
-            if ticker in live_prices:
-                merged_item.update(live_prices[ticker])
-            final_data.append(merged_item)
+            final_data.append(_price_cache[ticker].get('data', {}))
             
     return final_data
 
