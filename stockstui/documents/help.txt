@@ -4,6 +4,7 @@ NAME
 SYNOPSIS
     stockstui [OPTIONS]
     stockstui [VIEW_OPTION] [TICKER(S)]
+    stockstui -o, --output [LISTS] [--session-list ...]
 
 DESCRIPTION
     stocksTUI is a modern, terminal-based application for watching stock prices,
@@ -11,11 +12,8 @@ DESCRIPTION
     configurable, tabbed interface to organize assets into watchlists and
     provides a suite of tools for analysis and debugging.
 
-    The application is designed to be powerful for advanced users while
-    remaining accessible to everyone, as most features are configurable
-    directly through the UI. It features a persistent cache for fast startups,
-    market-aware data refreshing, and a robust set of keybindings for
-    efficient navigation.
+    The application can be run as a full Terminal User Interface (TUI) or in a
+    direct output mode for scripting and quick lookups from the command line.
 
 OPTIONS
     -h, --help
@@ -27,7 +25,7 @@ OPTIONS
     -v, -V, --version
         Show the application's version number and exit.
 
-    VIEW OPTIONS (Mutually Exclusive)
+    TUI VIEW OPTIONS (Mutually Exclusive)
 
     --tab LIST_NAME
         Start the application on a specific watchlist tab. LIST_NAME should
@@ -51,13 +49,19 @@ OPTIONS
         Start on the Configs tab, where you can manage watchlists, themes,
         and other application settings.
 
-    SESSION & HISTORY OPTIONS
+    OUTPUT & SESSION OPTIONS
+
+    -o, --output [LISTS]
+        Output data directly to the terminal without launching the TUI.
+        If no LISTS are provided, all tickers from all configured lists
+        are displayed. LISTS can be a single watchlist name or a comma-
+        separated list of names (e.g., stocks,crypto).
 
     --session-list NAME=TICKER1,TICKER2 ...
         Create one or more temporary watchlists for the current session only.
-        These lists will not be saved to your configuration file. This option
-        can be specified multiple times.
-        Example: --session-list mylist=AAPL,MSFT crypto=BTC-USD,ETH-USD
+        Works in both TUI and --output modes. This option can be specified
+        multiple times.
+        Example: stockstui -o --session-list mylist=AAPL,MSFT
 
     --period {1d,5d,1mo,6mo,ytd,1y,5y,max}
         When used with --history, specifies the initial time period for the
@@ -95,7 +99,7 @@ KEYBINDINGS
         c           Sort by Change (Price View) / Close (History View).
         p, e, t     Sort by Price, % Change, or Ticker (Price View only).
         o, H, L, v  Sort by Open, High, Low, or Volume (History View only).
-        u           Undo sorting and restore original order (Price View only).
+        u           Restore original view (clears sorting and search filters).
 
     News View
       Tab           Cycle focus to the next news article link.

@@ -1,5 +1,18 @@
 # Change Log
 
+## [0.1.0-b4] 2025-07-15
+
+### Added
+- `feat(cli)`: Added `-o/--output` flag to display stock data directly in the terminal without launching the TUI
+- `feat(cli)`: Supported optional watchlist filtering and session lists in CLI output mode
+
+### Fix
+- `fix(ui)`: Prevented crash on duplicate tickers in "all" tab by duplicating ticker lists
+
+### Docs
+- `docs(readme, cli)`: Updated help documentation to include `--output` flag and clarify TUI view options
+- `docs(changelog)`: Updated `CHANGELOG.md` to include recent feature additions
+
 ## [0.1.0-b3] 2025-07-14
 
 ### Added

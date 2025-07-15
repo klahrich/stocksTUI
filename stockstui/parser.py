@@ -57,7 +57,7 @@ def create_arg_parser() -> argparse.ArgumentParser:
         version=f'%(prog)s {APP_VERSION}'
     )
 
-    # --- View Selection Group ---
+    # --- View Selection Group (for TUI mode) ---
     view_group = parser.add_mutually_exclusive_group()
     view_group.add_argument(
         '--tab',
@@ -93,6 +93,16 @@ def create_arg_parser() -> argparse.ArgumentParser:
     )
     
     # --- Other Options ---
+    parser.add_argument(
+        '-o', '--output',
+        nargs='?',
+        const='all',
+        default=None,
+        metavar='LISTS',
+        help="""Output data directly to the terminal without launching the TUI.
+Optionally specify a comma-separated list of watchlists to show.
+If no list is specified, all tickers are shown."""
+    )
     parser.add_argument(
         '--session-list',
         nargs='+',

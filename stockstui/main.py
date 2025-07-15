@@ -11,6 +11,9 @@ import shutil
 import subprocess
 import argparse
 
+import yfinance as yf
+from rich.console import Console
+from rich.table import Table
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.actions import SkipAction
@@ -488,7 +491,11 @@ class StocksTUI(App):
         
         category = self.get_active_category()
         if category and category not in ["history", "news", "debug", "configs"]:
-            symbols = [s['ticker'] for s in self.config.lists.get(category, [])] if category != 'all' else [s['ticker'] for lst in self.config.lists.values() for s in lst]
+            if category == 'all':
+                symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
+            else:
+                symbols = [s['ticker'] for s in self.config.lists.get(category, [])]
+
             if symbols:
                 try:
                     price_table = self.query_one("#price-table", DataTable)
@@ -618,7 +625,10 @@ class StocksTUI(App):
             price_table.add_column("52-Wk Range", key="52-Wk Range")
             price_table.add_column("Ticker", key="Ticker")
 
-            symbols = [s['ticker'] for s in self.config.lists.get(category, [])] if category != 'all' else [s['ticker'] for lst in self.config.lists.values() for s in lst]
+            if category == 'all':
+                symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
+            else:
+                symbols = [s['ticker'] for s in self.config.lists.get(category, [])]
             
             if symbols and not any(market_provider.is_cached(s) for s in symbols):
                 price_table.loading = True
@@ -1185,6 +1195,101 @@ def show_manual():
     except Exception as e:
         print(f"An unexpected error occurred while trying to show help: {e}")
 
+def run_cli_output(args: argparse.Namespace):
+    """
+    Handles fetching and displaying stock data directly to the terminal, bypassing the TUI.
+    This function is triggered by the --output flag.
+    """
+    console = Console()
+    app_root = Path(__file__).resolve().parent
+    config = ConfigManager(app_root)
+
+    # --- 1. Handle Session Lists ---
+    if session_lists := args.session_list:
+        for name, tickers in session_lists.items():
+            config.lists[name] = [{"ticker": ticker, "alias": ticker, "note": ""} for ticker in tickers]
+
+    # --- 2. Determine and Collect Tickers ---
+    target_names = []
+    # If -o is used with a value (e.g., 'stocks'), add those to the target list.
+    if args.output != 'all':
+        target_names.extend([name.strip().lower() for name in args.output.split(',')])
+    # Always add session lists to the target if they are provided.
+    if args.session_list:
+        target_names.extend(args.session_list.keys())
+
+    lists_to_iterate = []
+    if not target_names:
+        # If no specific or session lists are given, it implies 'all' was intended.
+        lists_to_iterate = config.lists.items()
+    else:
+        # Otherwise, use the collected list of target names (de-duplicated).
+        unique_target_names = list(set(target_names))
+        lists_to_iterate = [(name, lst) for name, lst in config.lists.items() if name in unique_target_names]
+        
+    if not lists_to_iterate:
+        console.print(f"[bold red]Error:[/] No lists found matching your criteria.")
+        return
+        
+    all_tickers = set()
+    alias_map = {}
+    for _, list_content in lists_to_iterate:
+        for item in list_content:
+            ticker = item.get("ticker")
+            if ticker:
+                all_tickers.add(ticker)
+                alias_map[ticker] = item.get("alias", ticker)
+
+    if not all_tickers:
+        console.print("[yellow]No tickers found for the specified lists.[/yellow]")
+        return
+
+    # --- 3. Fetch Data using yfinance ---
+    with console.status("[bold green]Fetching data...[/]"):
+        try:
+            ticker_objects = yf.Tickers(" ".join(all_tickers))
+            all_info = {ticker: ticker_objects.tickers[ticker].info for ticker in all_tickers}
+        except Exception as e:
+            console.print(f"[bold red]Failed to fetch data from API:[/] {e}")
+            return
+
+    # --- 4. Format Data for Display ---
+    rows = []
+    for ticker, info in all_info.items():
+        if not info or not info.get('currency'):
+            rows.append(("Invalid Ticker", None, None, None, "N/A", "N/A", ticker))
+            continue
+
+        price = info.get('lastPrice') or info.get('currentPrice') or info.get('regularMarketPrice')
+        prev_close = info.get('regularMarketPreviousClose') or info.get('previousClose') or info.get('open')
+        change = price - prev_close if price is not None and prev_close is not None else None
+        change_percent = (change / prev_close) if change is not None and prev_close != 0 else None
+        day_range = f"${info.get('regularMarketDayLow'):,.2f} - ${info.get('regularMarketDayHigh'):,.2f}" if info.get('regularMarketDayLow') and info.get('regularMarketDayHigh') else "N/A"
+        wk_range = f"${info.get('fiftyTwoWeekLow'):,.2f} - ${info.get('fiftyTwoWeekHigh'):,.2f}" if info.get('fiftyTwoWeekLow') and info.get('fiftyTwoWeekHigh') else "N/A"
+        description = alias_map.get(ticker) or info.get('longName', ticker)
+        rows.append((description, price, change, change_percent, day_range, wk_range, ticker))
+
+    # --- 5. Display Data in a Rich Table ---
+    table = Table(title="Ticker Overview", show_header=True, header_style="bold magenta")
+    table.add_column("Description", style="dim", width=30)
+    table.add_column("Price", justify="right")
+    table.add_column("Change", justify="right")
+    table.add_column("% Change", justify="right")
+    table.add_column("Day's Range", justify="right")
+    table.add_column("52-Wk Range", justify="right")
+    table.add_column("Ticker", style="dim")
+
+    for desc, price, change, pct, day_r, wk_r, symbol in rows:
+        price_text = f"${price:,.2f}" if price is not None else "N/A"
+        style, change_text, pct_text = ("dim", "N/A", "N/A")
+        if change is not None and pct is not None:
+            if change > 0: style, change_text, pct_text = "green", f"{change:,.2f}", f"+{pct:.2%}"
+            elif change < 0: style, change_text, pct_text = "red", f"{change:,.2f}", f"{pct:.2%}"
+            else: style, change_text, pct_text = "", "0.00", "0.00%"
+        table.add_row(desc, Text(price_text, style="cyan"), Text(change_text, style=style), Text(pct_text, style=style), day_r, wk_r, symbol)
+
+    console.print(table)
+
 def main():
     """The main entry point for the application."""
     dirs = PlatformDirs("stockstui", "andriy-git")
@@ -1202,13 +1307,19 @@ def main():
         show_manual()
         return
 
-    app = StocksTUI(cli_overrides=vars(args))
-    textual_handler = TextualHandler(app)
-    textual_handler.setLevel(logging.WARNING)
-    formatter = logging.Formatter('%(message)s')
-    textual_handler.setFormatter(formatter)
-    logging.getLogger().addHandler(textual_handler)
-    app.run()
+    # --- Main Application Router ---
+    if args.output:
+        # If --output flag is used, run the CLI output and exit.
+        run_cli_output(args)
+    else:
+        # Otherwise, launch the full TUI application.
+        app = StocksTUI(cli_overrides=vars(args))
+        textual_handler = TextualHandler(app)
+        textual_handler.setLevel(logging.WARNING)
+        formatter = logging.Formatter('%(message)s')
+        textual_handler.setFormatter(formatter)
+        logging.getLogger().addHandler(textual_handler)
+        app.run()
 
 if __name__ == "__main__":
     main()
