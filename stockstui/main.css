@@ -333,3 +333,42 @@ Markdown .strong > .code {
 Footer {
   align-horizontal: right;
 }
+
+/* Portfolio selector styling */
+#portfolio-container {
+  height: auto;
+  padding: 1;
+  background: $surface;
+  border-bottom: solid $primary;
+}
+
+#portfolio-selector-container {
+  layout: horizontal;
+  height: 3;
+  align: center middle;
+}
+
+#portfolio-label {
+  width: auto;
+  padding-right: 1;
+  color: $foreground;
+  align: center middle;
+}
+
+#portfolio-selector {
+  width: 30;
+  margin-right: 2;
+}
+
+#manage-portfolios {
+  width: auto;
+}
+
+.vertical-center {
+  align: center middle;
+  height: 1fr;
+}
+
+.spacer {
+  height: 1;
+}
