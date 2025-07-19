@@ -1,5 +1,5 @@
 from textual.message import Message
-from textual.containers import Horizontal, HorizontalScroll
+from textual.containers import Horizontal, Container, Vertical
 from textual.widgets import Button, Label, Static
 from textual.widget import Widget
 from textual.app import ComposeResult
@@ -21,15 +21,15 @@ class TagFilterWidget(Widget):
     
     def compose(self) -> ComposeResult:
         """Creates the layout for the tag filter widget."""
-        with Horizontal(id="tag-filter-controls"):
-            if self.available_tags:
+        if self.available_tags:
+            with Horizontal(id="tag-filter-controls"):
                 yield Static("Filter by:", classes="tag-filter-label")
-                # Container for the tag buttons that will allow scrolling
-                with HorizontalScroll(classes="tag-buttons-container"):
+                # Container for the tag buttons that will allow wrapping
+                with Container(classes="tag-buttons-container"):
                     for tag in self.available_tags:
                         yield Button(tag, id=f"tag-button-{tag}", classes="tag-button")
                 yield Button("Clear", id="clear-filter-button", variant="default")
-            yield Label("", id="filter-status")
+        yield Label("Filter status", id="filter-status")
 
     def on_mount(self) -> None:
         """Called when the widget is mounted."""
