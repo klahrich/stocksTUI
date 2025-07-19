@@ -38,15 +38,13 @@ Tabs .underline--bar {
 
 /* Main content area where different views (price table, news, history) are displayed */
 #output-container {
-  overflow: auto; /* Enables scrolling if content overflows */
+  layout: vertical;
   height: 1fr; /* Takes up all available vertical space */
-  scrollbar-color: $panel; /* Color of the scrollbar track */
-  scrollbar-color-hover: $accent; /* Color of the scrollbar thumb on hover */
 }
 
 #price-table {
   width: 1fr; /* Let table fill the width */
-  height: auto; /* Height adjusts to content */
+  height: 1fr; /* Let table fill the remaining vertical space */
 }
 
 #debug-table {
@@ -371,4 +369,63 @@ Footer {
 
 .spacer {
   height: 1;
+}
+
+/* Tag Filter Widget Styles */
+#tag-filter {
+  height: auto;
+  padding: 0 1;
+  margin-bottom: 1;
+}
+
+#tag-filter-controls {
+  height: auto;
+  width: 100%;
+  align: left middle;
+}
+
+.tag-filter-label {
+  width: auto;
+  margin-right: 1;
+  color: $text-muted;
+}
+
+.tag-buttons-container {
+  layout: horizontal;
+  width: 1fr;
+  height: auto;
+}
+
+.tag-button {
+  width: auto;
+  height: 3;
+  margin: 0 1 1 0;
+  min-width: 8;
+  padding: 0 2;
+  color: $text;
+  background: $surface;
+  border: solid $primary;
+}
+
+.tag-button:hover {
+  background: $surface-lighten-1;
+  color: $text;
+}
+
+.tag-button.-primary {
+  background: $primary;
+  color: $background;
+}
+
+#clear-filter-button {
+  width: auto;
+  min-width: 8;
+  height: 1;
+  margin-left: 2;
+}
+
+#filter-status {
+  width: auto;
+  margin-left: 2;
+  color: $text-muted;
 }

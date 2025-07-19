@@ -75,6 +75,6 @@ def match_tags(item_tags: list[str], filter_tags: list[str]) -> bool:
         return True  # No filter means show all
     
     if not item_tags:
-        return False  # Item has no tags, can't match filter
+        return False  # Hide untagged items when filtering for specific tags
     
     return bool(set(item_tags) & set(filter_tags))

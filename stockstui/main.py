@@ -38,6 +38,7 @@ from stockstui.common import (PriceDataUpdated, NewsDataUpdated,
                               PortfolioChanged, PortfolioDataUpdated)
 from stockstui.data_providers.portfolio import PortfolioManager
 from stockstui.ui.widgets.search_box import SearchBox
+from stockstui.ui.widgets.tag_filter import TagFilterWidget, TagFilterChanged
 from stockstui.ui.views.config_view import ConfigView
 from stockstui.ui.views.history_view import HistoryView
 from stockstui.ui.views.news_view import NewsView
@@ -146,6 +147,7 @@ class StocksTUI(App):
     history_ticker = reactive(None)
     search_target_table = reactive(None)
     selected_portfolio = reactive("default")
+    active_tag_filter = reactive([])
 
     def __init__(self, cli_overrides: dict | None = None):
         """
@@ -289,6 +291,81 @@ class StocksTUI(App):
                 if ticker and alias:
                     alias_map[ticker] = alias
         return alias_map
+
+    def _get_available_tags_for_category(self, category: str) -> list[str]:
+        """Gets all available tags from tickers in the specified category."""
+        from stockstui.utils import parse_tags
+        
+        all_tags = set()
+        
+        lists_to_check = []
+        if category == 'all':
+            lists_to_check.extend(self.config.lists.values())
+        elif category in self.config.lists:
+            lists_to_check.append(self.config.lists[category])
+
+        for list_data in lists_to_check:
+            for item in list_data:
+                tags_str = item.get('tags', '')
+                if tags_str and isinstance(tags_str, str):
+                    tags = parse_tags(tags_str)
+                    all_tags.update(tags)
+        
+        return sorted(list(all_tags))
+
+    def _filter_symbols_by_tags(self, category: str, symbols: list[str]) -> list[str]:
+        """Filters symbols by active tag filter."""
+        from stockstui.utils import parse_tags, match_tags
+        
+        if not self.active_tag_filter:
+            return symbols  # No filter applied, return all symbols
+        
+        filtered_symbols = []
+        
+        if category == 'all':
+            # Need to check all lists for tag matching
+            for list_data in self.config.lists.values():
+                for item in list_data:
+                    ticker = item.get('ticker')
+                    if ticker in symbols:
+                        item_tags_str = item.get('tags', '')
+                        item_tags = parse_tags(item_tags_str) if item_tags_str else []
+                        if match_tags(item_tags, self.active_tag_filter):
+                            filtered_symbols.append(ticker)
+        else:
+            # Check specific list for tag matching
+            list_data = self.config.lists.get(category, [])
+            for item in list_data:
+                ticker = item.get('ticker')
+                if ticker in symbols:
+                    item_tags_str = item.get('tags', '')
+                    item_tags = parse_tags(item_tags_str) if item_tags_str else []
+                    if match_tags(item_tags, self.active_tag_filter):
+                        filtered_symbols.append(ticker)
+
+        logging.info(f"Filtered symbols: {filtered_symbols}")
+        
+        return list(set(filtered_symbols))  # Remove duplicates
+
+    def _update_tag_filter_status(self) -> None:
+        """Updates the tag filter status display with current counts."""
+        try:
+            tag_filter = self.query_one("#tag-filter")
+            category = self.get_active_category()
+            
+            if category and category not in ["history", "news", "debug", "configs"]:
+                # Get total symbols count
+                if category == 'all':
+                    total_symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
+                else:
+                    total_symbols = [s['ticker'] for s in self.config.lists.get(category, [])]
+                
+                # Get filtered symbols count
+                filtered_symbols = self._filter_symbols_by_tags(category, total_symbols)
+                
+                tag_filter.update_filter_status(len(filtered_symbols), len(total_symbols))
+        except NoMatches:
+            pass
 
     def _load_and_register_themes(self):
         """
@@ -495,6 +572,8 @@ class StocksTUI(App):
         - force: If True, bypasses the smart expiry cache for all symbols.
         """
         self.fetch_market_status(self.config.get_setting("market_calendar", "NYSE"))
+
+        logging.info("ACTION REFRESH")
         
         category = self.get_active_category()
         if category and category not in ["history", "news", "debug", "configs"]:
@@ -502,6 +581,11 @@ class StocksTUI(App):
                 symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
             else:
                 symbols = [s['ticker'] for s in self.config.lists.get(category, [])]
+            
+            logging.info("Applying tag filter")
+
+            # Apply tag filtering
+            symbols = self._filter_symbols_by_tags(category, symbols)
 
             if symbols:
                 try:
@@ -622,6 +706,10 @@ class StocksTUI(App):
         elif category == 'debug':
             await output_container.mount(DebugView())
         else: # This is a price view for 'all' or a specific list
+            # Add tag filter widget for list views
+            available_tags = self._get_available_tags_for_category(category)
+            tag_filter = TagFilterWidget(available_tags=available_tags, id="tag-filter")
+            await output_container.mount(tag_filter)
             await output_container.mount(DataTable(id="price-table", zebra_stripes=True))
 
             price_table = self.query_one("#price-table", DataTable)
@@ -637,6 +725,9 @@ class StocksTUI(App):
                 symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
             else:
                 symbols = [s['ticker'] for s in self.config.lists.get(category, [])]
+            
+            # Apply tag filtering
+            symbols = self._filter_symbols_by_tags(category, symbols)
             
             if symbols and not any(market_provider.is_cached(s) for s in symbols):
                 price_table.loading = True
@@ -800,16 +891,23 @@ class StocksTUI(App):
             dt.clear()
             
             if active_category == 'all':
-                symbols_on_screen = {s['ticker'] for lst in self.config.lists.values() for s in lst}
+                symbols_on_screen = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
             else:
-                symbols_on_screen = {s['ticker'] for s in self.config.lists.get(active_category, [])}
+                symbols_on_screen = [s['ticker'] for s in self.config.lists.get(active_category, [])]
             
-            data_for_table = [item for item in message.data if item['symbol'] in symbols_on_screen]
+            # Apply tag filtering to symbols_on_screen
+            filtered_symbols = self._filter_symbols_by_tags(active_category, symbols_on_screen)
+            filtered_symbols_set = set(filtered_symbols)
+            
+            data_for_table = [item for item in message.data if item['symbol'] in filtered_symbols_set]
 
             if not data_for_table:
-                if symbols_on_screen:
+                if filtered_symbols:
                     # We expected data but couldn't fetch it
                     dt.add_row("[dim]Could not fetch data for any symbols in this list.[/dim]")
+                elif symbols_on_screen and not filtered_symbols:
+                    # No symbols match the current tag filter
+                    dt.add_row("[dim]No symbols match the current tag filter.[/dim]")
                 else:
                     # No symbols in the list
                     dt.add_row(f"[dim]No symbols in list '{active_category}'. Add some in the Configs tab.[/dim]")
@@ -1203,6 +1301,16 @@ class StocksTUI(App):
         """Removes the search box when the user presses Enter."""
         try: self.query_one(SearchBox).remove()
         except NoMatches: pass
+    
+    @on(TagFilterChanged)
+    def on_tag_filter_changed(self, message: TagFilterChanged) -> None:
+        """Handles TagFilterChanged messages from the tag filter widget."""
+        logging.info(f"TagFilterChanged message received: {message.tags}")
+        self.active_tag_filter = message.tags
+        # Refresh the current view to apply the new filter
+        self.action_refresh()
+        # Update filter status after refresh
+        self._update_tag_filter_status()
     
     #endregion
 
