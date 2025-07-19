@@ -706,10 +706,12 @@ class StocksTUI(App):
         elif category == 'debug':
             await output_container.mount(DebugView())
         else: # This is a price view for 'all' or a specific list
-            # Add tag filter widget for list views
-            available_tags = self._get_available_tags_for_category(category)
-            tag_filter = TagFilterWidget(available_tags=available_tags, id="tag-filter")
-            await output_container.mount(tag_filter)
+            # Add tag filter widget for all and stocks views
+            if category in ['all', 'stocks']:
+                available_tags = self._get_available_tags_for_category(category)
+                tag_filter = TagFilterWidget(available_tags=available_tags, id="tag-filter")
+                await output_container.mount(tag_filter)
+
             await output_container.mount(DataTable(id="price-table", zebra_stripes=True))
 
             price_table = self.query_one("#price-table", DataTable)
