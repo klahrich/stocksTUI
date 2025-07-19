@@ -121,8 +121,6 @@ class StocksTUI(App):
         Binding("/", "focus_search", "Search", show=True),
         Binding("?", "toggle_help", "Toggle Help", show=True),
         Binding("i", "focus_input", "Input", show=False),
-        Binding("a", "add_stock_to_portfolio", "Add Stock", show=False),
-        Binding("x", "remove_stock_from_portfolio", "Remove Stock", show=False),
         Binding("d", "handle_sort_key('d')", "Sort by Description/Date", show=False),
         Binding("p", "handle_sort_key('p')", "Sort by Price", show=False),
         Binding("c", "handle_sort_key('c')", "Sort by Change/Close", show=False),
@@ -220,15 +218,6 @@ class StocksTUI(App):
                 yield Label("Last Refresh: Never", id="last-refresh-time")
         yield Footer()
 
-    @on(Button.Pressed)
-    def on_button_pressed(self, event: Button.Pressed) -> None:
-        """Handle button presses."""
-        button_id = event.button.id
-        
-        if button_id == "add-stock-button":
-            self.action_add_stock_to_portfolio()
-        elif button_id == "remove-stock-button":
-            self.action_remove_stock_from_portfolio()
     
     def on_mount(self) -> None:
         """
@@ -511,10 +500,6 @@ class StocksTUI(App):
         if category and category not in ["history", "news", "debug", "configs"]:
             if category == 'all':
                 symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
-            elif category == 'stocks':
-                # Get tickers from selected portfolio
-                portfolio_id = str(self.selected_portfolio) if self.selected_portfolio else "default"
-                symbols = self.portfolio_manager.get_tickers_for_portfolio(portfolio_id)
             else:
                 symbols = [s['ticker'] for s in self.config.lists.get(category, [])]
 
@@ -637,53 +622,7 @@ class StocksTUI(App):
         elif category == 'debug':
             await output_container.mount(DebugView())
         else: # This is a price view for 'all' or a specific list
-            # For stocks category, add portfolio selector
-            if category == 'stocks':
-                # Prepare portfolio options first
-                portfolios = self.portfolio_manager.get_all_portfolios()
-                options = []
-                # Always add default portfolio first
-                if "default" in portfolios:
-                    options.append(("Default Portfolio", "default"))
-                # Add other portfolios
-                for pid, portfolio in portfolios.items():
-                    if pid != "default":
-                        options.append((portfolio['name'], pid))
-                
-                # If no options, create a placeholder
-                if not options:
-                    options = [("Default Portfolio", "default")]
-                
-                # Create all widgets first
-                # Use the current selected portfolio if it exists in options, otherwise use first
-                current_value = str(self.selected_portfolio) if self.selected_portfolio else "default"
-                if not any(opt[1] == current_value for opt in options):
-                    current_value = options[0][1]
-                
-                portfolio_container = Container(
-                    Vertical(
-                        Horizontal(
-                            Select(options, id="portfolio-selector", allow_blank=False, value=current_value),
-                            Button("Manage", id="manage-portfolios", variant="primary"),
-                            Button("Add Stock", id="add-stock-button", variant="success"),
-                            Button("Remove Stock", id="remove-stock-button", variant="error"),
-                            id="portfolio-selector-container"
-                        ),
-                        Container(classes="spacer"),
-                        DataTable(id="price-table", zebra_stripes=True),
-                        id="portfolio-container"
-                    )
-                )
-                
-                # Mount the complete widget tree
-                await output_container.mount(portfolio_container)
-                
-                # Only update selected portfolio if it wasn't already set
-                if not self.selected_portfolio:
-                    self.selected_portfolio = current_value
-
-            else:
-                await output_container.mount(DataTable(id="price-table", zebra_stripes=True))
+            await output_container.mount(DataTable(id="price-table", zebra_stripes=True))
 
             price_table = self.query_one("#price-table", DataTable)
             price_table.add_column("Description", key="Description")
@@ -696,10 +635,6 @@ class StocksTUI(App):
 
             if category == 'all':
                 symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
-            elif category == 'stocks':
-                # Get tickers from selected portfolio
-                portfolio_id = str(self.selected_portfolio) if self.selected_portfolio else "default"
-                symbols = self.portfolio_manager.get_tickers_for_portfolio(portfolio_id)
             else:
                 symbols = [s['ticker'] for s in self.config.lists.get(category, [])]
             
@@ -721,16 +656,8 @@ class StocksTUI(App):
                     price_table.loading = True
                     self.fetch_prices(symbols, force=False, category=category)
             else:
-                # No symbols in the portfolio
-                if category == 'stocks':
-                    portfolio_name = "portfolio"
-                    if self.selected_portfolio and self.selected_portfolio != "default":
-                        portfolio = self.portfolio_manager.get_portfolio(str(self.selected_portfolio))
-                        if portfolio:
-                            portfolio_name = f"'{portfolio['name']}'"
-                    price_table.add_row(f"[dim]No stocks in {portfolio_name}. Press 'a' to add stocks.[/dim]")
-                else:
-                    price_table.add_row(f"[dim]No symbols in list '{category}'[/dim]")
+                # No symbols in the list
+                price_table.add_row(f"[dim]No symbols in list '{category}'. Add some in the Configs tab.[/dim]")
 
     @work(exclusive=True, thread=True)
     def fetch_prices(self, symbols: list[str], force: bool, category: str):
@@ -874,10 +801,6 @@ class StocksTUI(App):
             
             if active_category == 'all':
                 symbols_on_screen = {s['ticker'] for lst in self.config.lists.values() for s in lst}
-            elif active_category == 'stocks':
-                # Get tickers from selected portfolio
-                portfolio_id = str(self.selected_portfolio) if self.selected_portfolio else "default"
-                symbols_on_screen = set(self.portfolio_manager.get_tickers_for_portfolio(portfolio_id))
             else:
                 symbols_on_screen = {s['ticker'] for s in self.config.lists.get(active_category, [])}
             
@@ -888,16 +811,8 @@ class StocksTUI(App):
                     # We expected data but couldn't fetch it
                     dt.add_row("[dim]Could not fetch data for any symbols in this list.[/dim]")
                 else:
-                    # No symbols in the portfolio
-                    if active_category == 'stocks':
-                        portfolio_name = "portfolio"
-                        if self.selected_portfolio and self.selected_portfolio != "default":
-                            portfolio = self.portfolio_manager.get_portfolio(str(self.selected_portfolio))
-                            if portfolio:
-                                portfolio_name = f"'{portfolio['name']}'"
-                        dt.add_row(f"[dim]No stocks in {portfolio_name}. Press 'a' to add stocks.[/dim]")
-                    else:
-                        dt.add_row(f"[dim]No symbols in list '{active_category}'[/dim]")
+                    # No symbols in the list
+                    dt.add_row(f"[dim]No symbols in list '{active_category}'. Add some in the Configs tab.[/dim]")
                 return
 
             alias_map = self._get_alias_map()
@@ -1139,71 +1054,6 @@ class StocksTUI(App):
             self.history_ticker = event.row_key.value
             self.notify(f"Selected {self.news_ticker} for news/history tabs.")
     
-    def action_add_stock_to_portfolio(self):
-        """Add a stock to the current portfolio."""
-        if self.get_active_category() == 'stocks':
-            from stockstui.ui.modals import AddTickerModal
-            
-            def handle_add_result(result):
-                if result:
-                    ticker = result[0]
-                    try:
-                        # Add to current portfolio
-                        self.portfolio_manager.add_ticker_to_portfolio(str(self.selected_portfolio), ticker)
-                        
-                        # Always add to default portfolio as well (if not already there)
-                        if str(self.selected_portfolio) != "default":
-                            self.portfolio_manager.add_ticker_to_portfolio("default", ticker)
-                        
-                        # Also add to the stocks list if not already there
-                        if not any(item['ticker'] == ticker for item in self.config.lists.get('stocks', [])):
-                            self.config.lists.setdefault('stocks', []).append({
-                                'ticker': ticker,
-                                'alias': ticker,
-                                'note': ''
-                            })
-                            self.config.save_lists()
-                        
-                        # Refresh display
-                        self.action_refresh()
-                        self.notify(f"Added {ticker} to portfolio")
-                    except Exception as e:
-                        self.notify(f"Error adding stock: {e}", severity="error")
-            
-            self.push_screen(AddTickerModal(context="portfolio"), callback=handle_add_result)
-    
-    def action_remove_stock_from_portfolio(self):
-        """Remove the selected stock from the current portfolio."""
-        if self.get_active_category() == 'stocks':
-            try:
-                price_table = self.query_one("#price-table", DataTable)
-                if price_table.cursor_row >= 0:
-                    from textual.coordinate import Coordinate
-                    from stockstui.ui.modals import ConfirmDeleteModal
-                    
-                    ticker = price_table.get_cell_at(Coordinate(price_table.cursor_row, 6))  # Ticker is in column 6
-                    if ticker:
-                        ticker_text = extract_cell_text(ticker)
-                        
-                        def handle_remove_result(result):
-                            if result:
-                                try:
-                                    self.portfolio_manager.remove_ticker_from_portfolio(str(self.selected_portfolio), ticker_text)
-                                    self.action_refresh()
-                                    self.notify(f"Removed {ticker_text} from portfolio")
-                                except Exception as e:
-                                    self.notify(f"Error removing stock: {e}", severity="error")
-                        
-                        self.push_screen(
-                            ConfirmDeleteModal(
-                                item_name=ticker_text,
-                                prompt=f"Remove {ticker_text} from {self.selected_portfolio} portfolio?",
-                                require_typing=False
-                            ),
-                            callback=handle_remove_result
-                        )
-            except Exception as e:
-                self.notify(f"Error removing stock: {e}", severity="error")
 
     @on(DataTable.HeaderSelected, "#price-table")
     def on_price_table_header_selected(self, event: DataTable.HeaderSelected) -> None:
@@ -1354,30 +1204,6 @@ class StocksTUI(App):
         try: self.query_one(SearchBox).remove()
         except NoMatches: pass
     
-    @on(Select.Changed, "#portfolio-selector")
-    def on_portfolio_changed(self, event: Select.Changed):
-        """Handles portfolio selection changes."""
-        if event.value and event.value != Select.BLANK:
-            self.selected_portfolio = str(event.value)
-            self.post_message(PortfolioChanged(str(event.value)))
-            # Refresh the stocks display
-            self.action_refresh()
-    
-    @on(Button.Pressed, "#manage-portfolios")
-    def on_manage_portfolios(self, event: Button.Pressed):
-        """Opens portfolio management dialog - for now just create new portfolio."""
-        from stockstui.ui.modals import CreatePortfolioModal
-        
-        def handle_modal_result(result):
-            if result:
-                name, description = result
-                portfolio_id = self.portfolio_manager.create_portfolio(name, description)
-                # Update selected portfolio first
-                self.selected_portfolio = portfolio_id
-                # Refresh the entire stocks view to update selector
-                self.call_after_refresh(lambda: self._display_data_for_category('stocks'))
-        
-        self.push_screen(CreatePortfolioModal(), callback=handle_modal_result)
     #endregion
 
 def show_manual():
