@@ -681,6 +681,10 @@ class StocksTUI(App):
                 # Only update selected portfolio if it wasn't already set
                 if not self.selected_portfolio:
                     self.selected_portfolio = current_value
+
+            else:
+                await output_container.mount(DataTable(id="price-table", zebra_stripes=True))
+
             price_table = self.query_one("#price-table", DataTable)
             price_table.add_column("Description", key="Description")
             price_table.add_column("Price", key="Price")
@@ -688,7 +692,7 @@ class StocksTUI(App):
             price_table.add_column("% Change", key="% Change")
             price_table.add_column("Day's Range", key="Day's Range")
             price_table.add_column("52-Wk Range", key="52-Wk Range")
-            price_table.add_column("Ticker", key="Ticker")
+            price_table.add_column("Ticker", key="Ticker")            
 
             if category == 'all':
                 symbols = list(set(s['ticker'] for lst in self.config.lists.values() for s in lst))
